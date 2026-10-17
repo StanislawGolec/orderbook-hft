@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ORDERBOOK_BUILD_TESTS "Build test suite" ON)
-option(ORDERBOOK_BUILD_BENCHMARKS "Build benchmarks" OFF)
+option(ORDERBOOK_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(ORDERBOOK_ENABLE_SANITIZERS "Enable ASan/UBSan sanitizers" OFF)
 
 # Warning and compiler optimization profile
@@ -66,3 +66,9 @@ if(ORDERBOOK_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# Benchmarking configuration
+if(ORDERBOOK_BUILD_BENCHMARKS)
+    add_subdirectory(benchmarks)
+endif()
+
