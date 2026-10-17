@@ -27,6 +27,7 @@ public:
     virtual ~IMatchingListener() = default;
 
     virtual void on_order_accepted(const OrderAccepted& event) noexcept { (void)event; }
+    virtual void on_order_rested(const OrderRested& event) noexcept { (void)event; }
     virtual void on_order_rejected(const OrderRejected& event) noexcept { (void)event; }
     virtual void on_order_cancelled(const OrderCancelled& event) noexcept { (void)event; }
     virtual void on_order_filled(const OrderFilled& event) noexcept { (void)event; }

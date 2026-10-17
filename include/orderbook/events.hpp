@@ -19,13 +19,22 @@ struct TradeEvent {
     Timestamp timestamp{0};
 };
 
-// Emitted when an order passes validation and enters the book
+// Emitted when an order passes validation and enters the engine
 struct OrderAccepted {
     OrderId order_id{0};
     Price price{Price::zero()};
     Volume quantity{0};
     Side side{Side::Buy};
     OrderType type{OrderType::Limit};
+    Timestamp timestamp{0};
+};
+
+// Emitted when an order rests in the order book queue
+struct OrderRested {
+    OrderId order_id{0};
+    Price price{Price::zero()};
+    Volume quantity{0};
+    Side side{Side::Buy};
     Timestamp timestamp{0};
 };
 
@@ -61,6 +70,9 @@ static_assert(std::is_standard_layout_v<TradeEvent>, "TradeEvent must have stand
 static_assert(std::is_trivially_copyable_v<OrderAccepted>,
               "OrderAccepted must be trivially copyable");
 static_assert(std::is_standard_layout_v<OrderAccepted>, "OrderAccepted must have standard layout");
+
+static_assert(std::is_trivially_copyable_v<OrderRested>, "OrderRested must be trivially copyable");
+static_assert(std::is_standard_layout_v<OrderRested>, "OrderRested must have standard layout");
 
 static_assert(std::is_trivially_copyable_v<OrderRejected>,
               "OrderRejected must be trivially copyable");

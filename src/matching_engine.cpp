@@ -219,6 +219,15 @@ bool MatchingEngine::process_order(const OrderRequest& request) {
                 }
                 return false;
             }
+            if (listener_) {
+                listener_->on_order_rested(OrderRested{
+                    .order_id = request.id,
+                    .price = request.price,
+                    .quantity = remaining_qty,
+                    .side = request.side,
+                    .timestamp = request.timestamp,
+                });
+            }
         }
     }
 

@@ -52,6 +52,8 @@ add_library(orderbook_core STATIC
     src/cpu_affinity.cpp
     src/engine_service.cpp
     src/invariant_checker.cpp
+    src/market_data_publisher.cpp
+    src/feed_handler.cpp
 )
 
 target_include_directories(orderbook_core PUBLIC
