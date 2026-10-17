@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu - GCC 13 (Release)
+            os: ubuntu-24.04
+            cxx: g++-13
+            cc: gcc-13
+            build_type: Release
+            sanitizers: OFF
+
+          - name: Ubuntu - Clang 17 (ASan / UBSan)
+            os: ubuntu-24.04
+            cxx: clang++-17
+            cc: clang-17
+            build_type: Debug
+            sanitizers: ON
+
+          - name: Windows - MSVC 2022 (Release)
+            os: windows-latest
+            build_type: Release
+            sanitizers: OFF
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Linux Compilers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13 clang-17 lld-17 ninja-build
+          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DORDERBOOK_BUILD_TESTS=ON \
+            -DORDERBOOK_BUILD_BENCHMARKS=ON \
+            -DORDERBOOK_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DORDERBOOK_BUILD_TESTS=ON \
+            -DORDERBOOK_BUILD_BENCHMARKS=ON \
+            -DORDERBOOK_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
+
+      - name: Build All Targets
+        run: cmake --build build --config ${{ matrix.build_type }}
+
+      - name: Run Test Suite (CTest)
+        run: ctest --test-dir build --output-on-failure -C ${{ matrix.build_type }}
+
+      - name: Run Google Benchmark Suite
+        if: matrix.build_type == 'Release'
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./build/benchmarks/Release/matching_bench.exe --benchmark_counters_tabular=true
+          else
+            ./build/benchmarks/matching_bench --benchmark_counters_tabular=true
+          fi
+        shell: bash
