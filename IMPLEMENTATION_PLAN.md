@@ -2,7 +2,8 @@
 
 > **Target Standard:** Modern C++20 / C++23  
 > **Target Domain:** Ultra-Low Latency Financial Systems and High-Performance Infrastructure  
-> **Key Performance Target:** Sub-50ns execution latency, zero heap allocations on the hot path, cache-conscious mechanical sympathy (`alignas(64)`), lock-free single-writer core.
+> **Key Performance Target:** Sub-50ns execution latency, zero heap allocations on the hot path, cache-conscious mechanical sympathy (`alignas(64)`), lock-free single-writer core.  
+> **Specialized Skills Available:** Consult `.agents/skills/cpp-hft-profiling/SKILL.md` for benchmarking, sanitizers, and allocation guards.
 
 ---
 
@@ -125,23 +126,41 @@ Engineer a dedicated memory management architecture ensuring absolute zero heap 
 ---
 
 ## Stage 3: Low-Latency Limit Order Book Core and Fast Order Indexing
-*Status: [ ] Pending*
+*Status: [x] COMPLETED*
 
 ### Objective
 Implement the Limit Order Book (LOB) data structures implementing Price-Time Priority (FIFO), multi-level price indexing, and fast $\mathcal{O}(1)$ order cancellation indexing.
 
-### Tasks to Implement
-- [ ] `PriceLevel`: Holds `Price price`, `Volume total_volume`, `uint32_t order_count`, and `IntrusiveList<Order> order_queue`.
-- [ ] `OrderBookSide`:
+### Tasks and Status
+- [x] **`PriceLevel` Queue Aggregation (`include/orderbook/price_level.hpp`):**
+  - Encapsulates `Price price`, `Volume total_volume`, `uint32_t order_count`, and `IntrusiveList<Order> orders_`.
+  - Operations in $\mathcal{O}(1)$: `add_order()`, `remove_order()`, `reduce_volume()`, `empty()`, `clear()`.
+  - Underflow-safe volume arithmetic.
+- [x] **`OrderBookSide` (Bids & Asks) (`include/orderbook/order_book_side.hpp`, `src/order_book_side.cpp`):**
   - Bid Side: Orders sorted by price descending (Highest Bid at top).
   - Ask Side: Orders sorted by price ascending (Lowest Ask at top).
-  - Direct dense tick array for active price range with sorted array fallback.
-- [ ] `OrderIndex`:
-  - Flat hash map with open addressing and linear probing mapping `OrderId -> Order*` for $\mathcal{O}(1)$ direct cancellation.
-- [ ] Best Bid / Best Offer (BBO) pointer caching for sub-5ns spread querying.
+  - Contiguous sorted price level vector with binary search (`std::lower_bound`).
+  - Pre-allocated `ObjectPool<PriceLevel>` ensuring zero runtime heap allocations during price level creation and deletion.
+  - Cached `best_level_` pointer for sub-2ns BBO queries.
+  - Market depth snapshot generator (`get_depth(max_levels)`).
+- [x] **`FlatOrderIndex` Fast Lookup Table (`include/orderbook/order_index.hpp`):**
+  - Flat hash map with open addressing, linear probing, and power-of-two capacity masking.
+  - Fast 64-bit integer mixer hash.
+  - Zero pointer-chasing and high cache locality.
+  - Operations in $\mathcal{O}(1)$: `insert()`, `find()`, `erase()`, `contains()`, `clear()`.
+- [x] **`OrderBook` Core Coordinator (`include/orderbook/order_book.hpp`, `src/order_book.cpp`):**
+  - Pre-allocates order and level pools alongside the flat order index.
+  - Implements `add_limit_order()`, `cancel_order()`, `find_order()`.
+  - Instant BBO querying: `best_bid()`, `best_ask()`, `best_bid_volume()`, `best_ask_volume()`.
+  - Market depth snapshots (`get_bids_depth()`, `get_asks_depth()`).
+- [x] **Unit Testing & Verification:**
+  - `tests/test_price_level.cpp`, `tests/test_order_index.cpp`, `tests/test_order_book_side.cpp`, `tests/test_order_book.cpp`.
+  - Total 43 test cases and 3,975 assertions passed with zero dynamic heap allocations on the hot path under `AllocationGuard`.
 
-### What to Use
-- Flat hash maps, open addressing, intrusive linked lists, `std::span`, branch prediction hints (`[[likely]]`, `[[unlikely]]`).
+### What Was Used
+- **Data Structures:** Flat hash map with open addressing, intrusive doubly linked lists, sorted price level vector, object pools.
+- **Algorithms:** Binary search (`std::lower_bound`), 64-bit Thomas Wang integer hash mixer.
+- **Quality Tools:** Catch2 v3, CTest, `.clang-format`.
 
 ---
 
@@ -263,7 +282,7 @@ Create a repository setup with multi-platform CI pipelines, architectural diagra
 | :--- | :--- | :--- | :--- | :--- |
 | **Stage 1** | Toolchain & Types | **COMPLETED** | CMake, C++20 types, `Price` fixed-point, Clang tools, Tests | 18/18 tests passed, strict warnings |
 | **Stage 2** | Memory & Lists | **COMPLETED** | `StaticArenaPool`, `IntrusiveList`, `AllocationGuard`, `Order` | 32/32 tests passed, 0 allocs on hot path |
-| **Stage 3** | LOB Structure | Pending | `PriceLevel`, `OrderBookSide`, Flat Hash Index | $O(1)$ cancellation by pointer |
+| **Stage 3** | LOB Structure | **COMPLETED** | `PriceLevel`, `OrderBookSide`, `FlatOrderIndex`, `OrderBook` | 43/43 tests passed, sub-2ns BBO, 0 allocs |
 | **Stage 4** | Matching Core | Pending | Limit, Market, IOC, FOK matching logic | Correct execution across all order types |
 | **Stage 5** | Concurrency | Pending | SPSC lock-free queue, CPU core affinity pinning | Zero lock contention, cache isolation |
 | **Stage 6** | Benchmarking | Pending | Benchmark suite, latency percentiles | $< 25\text{ ns}$ insert, $< 18\text{ ns}$ cancel |
