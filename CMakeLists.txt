@@ -55,6 +55,7 @@ add_library(orderbook_core STATIC
     src/market_data_publisher.cpp
     src/feed_handler.cpp
     src/symbol_router.cpp
+    src/market_replay.cpp
 )
 
 target_include_directories(orderbook_core PUBLIC
@@ -64,6 +65,10 @@ target_include_directories(orderbook_core PUBLIC
 
 target_compile_features(orderbook_core PUBLIC cxx_std_20)
 target_link_libraries(orderbook_core PUBLIC orderbook_flags)
+
+# High-throughput standalone soak and replay tool
+add_executable(market_replay tools/market_replay.cpp)
+target_link_libraries(market_replay PRIVATE orderbook_core)
 
 # Testing configuration
 if(ORDERBOOK_BUILD_TESTS)

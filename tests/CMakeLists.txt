@@ -32,6 +32,7 @@ add_executable(orderbook_tests
     test_market_data.cpp
     test_order_amend.cpp
     test_symbol_router.cpp
+    test_soak_replay.cpp
 )
 
 target_link_libraries(orderbook_tests PRIVATE
