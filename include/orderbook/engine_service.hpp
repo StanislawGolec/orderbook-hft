@@ -11,13 +11,14 @@
 
 namespace orderbook {
 
-enum class CommandType : uint8_t { NewOrder = 0, CancelOrder = 1 };
+enum class CommandType : uint8_t { NewOrder = 0, CancelOrder = 1, AmendOrder = 2 };
 
 // Order command structure for the SPSC ingestion queue
 struct OrderCommand {
     CommandType type{CommandType::NewOrder};
     OrderRequest request{};
     OrderId cancel_id{INVALID_ORDER_ID};
+    AmendOrderRequest amend_request{};
     Timestamp timestamp{0};
 };
 
@@ -59,6 +60,14 @@ public:
 
     // Thread-safe lock-free non-blocking order cancellation
     bool cancel_order(OrderId id, Timestamp ts = 0);
+
+    // Thread-safe lock-free non-blocking order amendment
+    bool amend_order(const AmendOrderRequest& request);
+
+    bool amend_order(OrderId id, Price new_price, Volume new_volume, Timestamp ts = 0) {
+        return amend_order(AmendOrderRequest{
+            .id = id, .new_price = new_price, .new_volume = new_volume, .timestamp = ts});
+    }
 
     [[nodiscard]] size_t queue_size() const noexcept { return input_queue_.size(); }
     [[nodiscard]] bool queue_empty() const noexcept { return input_queue_.empty(); }

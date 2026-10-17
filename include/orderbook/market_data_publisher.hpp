@@ -16,6 +16,7 @@ public:
     virtual void on_order_executed(const OrderExecutedMsg& msg) noexcept { (void)msg; }
     virtual void on_order_cancelled(const OrderCancelMsg& msg) noexcept { (void)msg; }
     virtual void on_order_deleted(const OrderDeleteMsg& msg) noexcept { (void)msg; }
+    virtual void on_order_replaced(const OrderReplaceMsg& msg) noexcept { (void)msg; }
     virtual void on_depth_snapshot(const DepthSnapshotMsg& msg) noexcept { (void)msg; }
 };
 
@@ -37,6 +38,7 @@ public:
     void on_order_rested(const OrderRested& event) noexcept override;
     void on_order_cancelled(const OrderCancelled& event) noexcept override;
     void on_order_filled(const OrderFilled& event) noexcept override;
+    void on_order_amended(const OrderAmended& event) noexcept override;
     void on_trade(const TradeEvent& event) noexcept override;
 
 private:

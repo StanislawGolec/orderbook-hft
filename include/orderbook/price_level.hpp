@@ -52,10 +52,20 @@ public:
         orders_.erase(order);
     }
 
-    // Reduces volume when an order is partially executed
+    // Reduces volume when an order is partially executed or volume is amended down
     void reduce_volume(Volume filled_qty) noexcept {
         assert(total_volume_ >= filled_qty);
         total_volume_ -= filled_qty;
+    }
+
+    // Increases volume when an order's volume is amended up
+    void increase_volume(Volume add_qty) noexcept { total_volume_ += add_qty; }
+
+    // Moves an existing order to the tail of the FIFO queue (losing time priority)
+    void move_to_tail(Order* order) noexcept {
+        assert(order != nullptr);
+        orders_.erase(order);
+        orders_.push_back(order);
     }
 
     void clear() noexcept {

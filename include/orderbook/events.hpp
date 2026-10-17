@@ -63,6 +63,25 @@ struct OrderFilled {
     Timestamp timestamp{0};
 };
 
+// Request to amend price and/or volume of a resting order
+struct AmendOrderRequest {
+    OrderId id{0};
+    Price new_price{Price::zero()};
+    Volume new_volume{0};
+    Timestamp timestamp{0};
+};
+
+// Emitted when a resting order has its price or volume modified
+struct OrderAmended {
+    OrderId order_id{0};
+    Price old_price{Price::zero()};
+    Price new_price{Price::zero()};
+    Volume old_quantity{0};
+    Volume new_quantity{0};
+    Side side{Side::Buy};
+    Timestamp timestamp{0};
+};
+
 // Compile-time checks enforcing zero serialization overhead
 static_assert(std::is_trivially_copyable_v<TradeEvent>, "TradeEvent must be trivially copyable");
 static_assert(std::is_standard_layout_v<TradeEvent>, "TradeEvent must have standard layout");
@@ -85,5 +104,14 @@ static_assert(std::is_standard_layout_v<OrderCancelled>,
 
 static_assert(std::is_trivially_copyable_v<OrderFilled>, "OrderFilled must be trivially copyable");
 static_assert(std::is_standard_layout_v<OrderFilled>, "OrderFilled must have standard layout");
+
+static_assert(std::is_trivially_copyable_v<AmendOrderRequest>,
+              "AmendOrderRequest must be trivially copyable");
+static_assert(std::is_standard_layout_v<AmendOrderRequest>,
+              "AmendOrderRequest must have standard layout");
+
+static_assert(std::is_trivially_copyable_v<OrderAmended>,
+              "OrderAmended must be trivially copyable");
+static_assert(std::is_standard_layout_v<OrderAmended>, "OrderAmended must have standard layout");
 
 }  // namespace orderbook

@@ -178,6 +178,38 @@ static void BM_SPSC_Throughput(benchmark::State& state) {
     state.counters["allocs/op"] = 0;
 }
 
+// 6. In-Place Order Amendment (Volume reduction / modification)
+static void BM_AmendOrder_InPlace(benchmark::State& state) {
+    const size_t batch_size = 50000;
+    OrderBook book(batch_size * 2, 2000);
+    book.preallocate(batch_size * 2, 2000);
+    MatchingEngine engine(book);
+
+    for (auto _ : state) {
+        state.PauseTiming();
+        book.clear();
+        book.preallocate(batch_size * 2, 2000);
+        for (uint64_t i = 1; i <= batch_size; ++i) {
+            Price price =
+                Price::from_double(100.0) + Price::from_raw(static_cast<int64_t>(i % 500));
+            book.add_limit_order(i, Side::Buy, price, 100, 1000 + i);
+        }
+        state.ResumeTiming();
+
+        {
+            AllocationGuard guard;
+            for (uint64_t i = 1; i <= batch_size; ++i) {
+                Price price =
+                    Price::from_double(100.0) + Price::from_raw(static_cast<int64_t>(i % 500));
+                bool amended = engine.amend_order(i, price, 50, 2000 + i);
+                benchmark::DoNotOptimize(amended);
+            }
+        }
+    }
+    state.SetItemsProcessed(state.iterations() * batch_size);
+    state.counters["allocs/op"] = 0;
+}
+
 }  // namespace
 
 BENCHMARK(BM_InsertLimitOrder_Resting)
@@ -241,6 +273,21 @@ BENCHMARK(BM_MarketOrder_SweepLevels)
     });
 
 BENCHMARK(BM_SPSC_Throughput)
+    ->Unit(benchmark::kNanosecond)
+    ->Repetitions(5)
+    ->ComputeStatistics("p50",
+                        [](const std::vector<double>& v) { return calculate_percentile(v, 0.50); })
+    ->ComputeStatistics("p90",
+                        [](const std::vector<double>& v) { return calculate_percentile(v, 0.90); })
+    ->ComputeStatistics("p95",
+                        [](const std::vector<double>& v) { return calculate_percentile(v, 0.95); })
+    ->ComputeStatistics("p99",
+                        [](const std::vector<double>& v) { return calculate_percentile(v, 0.99); })
+    ->ComputeStatistics("p99.9", [](const std::vector<double>& v) {
+        return calculate_percentile(v, 0.999);
+    });
+
+BENCHMARK(BM_AmendOrder_InPlace)
     ->Unit(benchmark::kNanosecond)
     ->Repetitions(5)
     ->ComputeStatistics("p50",

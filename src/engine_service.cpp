@@ -55,6 +55,15 @@ bool EngineService::cancel_order(OrderId id, Timestamp ts) {
     return input_queue_.try_push(cmd);
 }
 
+bool EngineService::amend_order(const AmendOrderRequest& request) {
+    OrderCommand cmd{.type = CommandType::AmendOrder,
+                     .request = {},
+                     .cancel_id = INVALID_ORDER_ID,
+                     .amend_request = request,
+                     .timestamp = request.timestamp};
+    return input_queue_.try_push(cmd);
+}
+
 void EngineService::run() {
     if (core_affinity_.has_value()) {
         pin_current_thread_to_core(*core_affinity_);
@@ -88,6 +97,8 @@ void EngineService::process_command(const OrderCommand& cmd) {
         engine_.process_order(cmd.request);
     } else if (cmd.type == CommandType::CancelOrder) {
         engine_.cancel_order(cmd.cancel_id, cmd.timestamp);
+    } else if (cmd.type == CommandType::AmendOrder) {
+        engine_.process_amend(cmd.amend_request);
     }
 }
 

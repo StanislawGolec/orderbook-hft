@@ -37,6 +37,7 @@ public:
     bool on_order_executed(const OrderExecutedMsg& msg);
     bool on_order_cancelled(const OrderCancelMsg& msg);
     bool on_order_deleted(const OrderDeleteMsg& msg);
+    bool on_order_replaced(const OrderReplaceMsg& msg);
     bool on_depth_snapshot(const DepthSnapshotMsg& msg);
 
     // Resynchronization via snapshot

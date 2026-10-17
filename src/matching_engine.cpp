@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "orderbook/cpu_prefetch.hpp"
+
 namespace orderbook {
 
 MatchingEngine::MatchingEngine(OrderBook& book, IMatchingListener* listener)
@@ -111,6 +113,9 @@ bool MatchingEngine::process_order(const OrderRequest& request) {
 
             Price match_price = best_level->price();
             Order* maker = best_level->orders().front();
+            if (maker->next) [[likely]] {
+                cpu_prefetch(maker->next);
+            }
             Volume match_qty = std::min(remaining_qty, maker->remaining_volume);
             uint64_t match_id = ++match_id_sequence_;
             remaining_qty -= match_qty;
@@ -156,6 +161,9 @@ bool MatchingEngine::process_order(const OrderRequest& request) {
 
             Price match_price = best_level->price();
             Order* maker = best_level->orders().front();
+            if (maker->next) [[likely]] {
+                cpu_prefetch(maker->next);
+            }
             Volume match_qty = std::min(remaining_qty, maker->remaining_volume);
             uint64_t match_id = ++match_id_sequence_;
             remaining_qty -= match_qty;
@@ -260,6 +268,103 @@ bool MatchingEngine::cancel_order(OrderId id, Timestamp ts) {
         listener_->on_order_cancelled(event);
     }
     return removed;
+}
+
+bool MatchingEngine::process_amend(const AmendOrderRequest& request) {
+    if (request.id == INVALID_ORDER_ID) [[unlikely]] {
+        if (listener_) {
+            listener_->on_order_rejected(OrderRejected{
+                .order_id = request.id,
+                .reason = RejectReason::OrderNotFound,
+                .timestamp = request.timestamp,
+            });
+        }
+        return false;
+    }
+
+    if (request.new_volume == 0) [[unlikely]] {
+        if (listener_) {
+            listener_->on_order_rejected(OrderRejected{
+                .order_id = request.id,
+                .reason = RejectReason::InvalidQuantity,
+                .timestamp = request.timestamp,
+            });
+        }
+        return false;
+    }
+
+    if (request.new_price <= Price::zero()) [[unlikely]] {
+        if (listener_) {
+            listener_->on_order_rejected(OrderRejected{
+                .order_id = request.id,
+                .reason = RejectReason::InvalidPrice,
+                .timestamp = request.timestamp,
+            });
+        }
+        return false;
+    }
+
+    Order* order = book_.find_order(request.id);
+    if (!order) [[unlikely]] {
+        if (listener_) {
+            listener_->on_order_rejected(OrderRejected{
+                .order_id = request.id,
+                .reason = RejectReason::OrderNotFound,
+                .timestamp = request.timestamp,
+            });
+        }
+        return false;
+    }
+
+    Price old_price = order->price;
+    Volume old_vol = order->remaining_volume;
+    Side side = order->side;
+    TimeInForce tif = order->tif;
+
+    if (request.new_price == old_price) {
+        if (request.new_volume == old_vol) {
+            return true;
+        }
+
+        bool ok = book_.modify_order_volume(order, request.new_volume);
+        if (ok && listener_) {
+            listener_->on_order_amended(OrderAmended{
+                .order_id = request.id,
+                .old_price = old_price,
+                .new_price = old_price,
+                .old_quantity = old_vol,
+                .new_quantity = request.new_volume,
+                .side = side,
+                .timestamp = request.timestamp,
+            });
+        }
+        return ok;
+    }
+
+    // Price changed: atomic cancel and re-submission at new price
+    book_.cancel_order(request.id);
+
+    if (listener_) {
+        listener_->on_order_amended(OrderAmended{
+            .order_id = request.id,
+            .old_price = old_price,
+            .new_price = request.new_price,
+            .old_quantity = old_vol,
+            .new_quantity = request.new_volume,
+            .side = side,
+            .timestamp = request.timestamp,
+        });
+    }
+
+    return process_order(OrderRequest{
+        .id = request.id,
+        .side = side,
+        .type = OrderType::Limit,
+        .price = request.new_price,
+        .volume = request.new_volume,
+        .timestamp = request.timestamp,
+        .tif = tif,
+    });
 }
 
 }  // namespace orderbook

@@ -31,6 +31,7 @@ public:
     virtual void on_order_rejected(const OrderRejected& event) noexcept { (void)event; }
     virtual void on_order_cancelled(const OrderCancelled& event) noexcept { (void)event; }
     virtual void on_order_filled(const OrderFilled& event) noexcept { (void)event; }
+    virtual void on_order_amended(const OrderAmended& event) noexcept { (void)event; }
     virtual void on_trade(const TradeEvent& event) noexcept { (void)event; }
 };
 
@@ -58,6 +59,15 @@ public:
                                           .volume = volume,
                                           .timestamp = ts,
                                           .tif = tif});
+    }
+
+    // In-place order amendment handler (retains priority on volume decrease)
+    bool process_amend(const AmendOrderRequest& request);
+
+    // Convenience overload for amending orders
+    bool amend_order(OrderId id, Price new_price, Volume new_volume, Timestamp ts = 0) {
+        return process_amend(AmendOrderRequest{
+            .id = id, .new_price = new_price, .new_volume = new_volume, .timestamp = ts});
     }
 
     // Cancels a resting order in O(1)

@@ -71,6 +71,14 @@ bool FeedHandler::process_message(const uint8_t* buffer, size_t length) {
             std::memcpy(&msg, buffer, sizeof(OrderDeleteMsg));
             return on_order_deleted(msg);
         }
+        case MarketDataMsgType::OrderReplace: {
+            if (length < sizeof(OrderReplaceMsg)) {
+                return false;
+            }
+            OrderReplaceMsg msg;
+            std::memcpy(&msg, buffer, sizeof(OrderReplaceMsg));
+            return on_order_replaced(msg);
+        }
         case MarketDataMsgType::DepthSnapshot: {
             if (length < sizeof(DepthSnapshotMsg)) {
                 return false;
@@ -117,6 +125,12 @@ bool FeedHandler::on_order_cancelled(const OrderCancelMsg& msg) {
 }
 
 bool FeedHandler::on_order_deleted(const OrderDeleteMsg& msg) {
+    check_sequence(msg.sequence_number);
+    ++messages_processed_;
+    return true;
+}
+
+bool FeedHandler::on_order_replaced(const OrderReplaceMsg& msg) {
     check_sequence(msg.sequence_number);
     ++messages_processed_;
     return true;

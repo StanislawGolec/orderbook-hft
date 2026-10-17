@@ -96,6 +96,18 @@ void OrderBook::reduce_order_volume(Order* order, Volume filled_qty) {
     }
 }
 
+bool OrderBook::modify_order_volume(Order* order, Volume new_volume) {
+    if (!order || new_volume == 0) {
+        return false;
+    }
+
+    if (order->side == Side::Buy) {
+        return bids_.modify_order_volume(order, new_volume);
+    } else {
+        return asks_.modify_order_volume(order, new_volume);
+    }
+}
+
 Order* OrderBook::find_order(OrderId id) const noexcept {
     return order_index_.find(id);
 }

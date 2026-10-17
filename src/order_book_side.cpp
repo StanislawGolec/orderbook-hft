@@ -94,6 +94,32 @@ void OrderBookSide::reduce_order_volume(Order* order, Volume filled_qty) {
     order->fill(filled_qty);
 }
 
+bool OrderBookSide::modify_order_volume(Order* order, Volume new_volume) {
+    if (!order || new_volume == 0) {
+        return false;
+    }
+
+    PriceLevel* level = find_level(order->price);
+    if (!level) {
+        return false;
+    }
+
+    if (new_volume < order->remaining_volume) {
+        Volume diff = order->remaining_volume - new_volume;
+        level->reduce_volume(diff);
+        total_volume_ -= diff;
+        order->remaining_volume = new_volume;
+    } else if (new_volume > order->remaining_volume) {
+        Volume diff = new_volume - order->remaining_volume;
+        level->increase_volume(diff);
+        total_volume_ += diff;
+        order->remaining_volume = new_volume;
+        order->initial_volume += diff;
+        level->move_to_tail(order);
+    }
+    return true;
+}
+
 Volume OrderBookSide::available_volume_up_to(Price limit_price) const noexcept {
     Volume vol = 0;
     for (const PriceLevel* level : levels_) {

@@ -34,6 +34,10 @@ public:
     // Reduces volume of an order upon partial fill
     void reduce_order_volume(Order* order, Volume filled_qty);
 
+    // Modifies an existing order's volume in-place (retains priority on decrease, moves to tail on
+    // increase)
+    bool modify_order_volume(Order* order, Volume new_volume);
+
     [[nodiscard]] Order* find_order(OrderId id) const noexcept;
 
     // Best Bid / Best Offer (BBO) queries

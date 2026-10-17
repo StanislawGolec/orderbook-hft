@@ -54,6 +54,9 @@ public:
     // Updates volume upon partial fill
     void reduce_order_volume(Order* order, Volume filled_qty);
 
+    // Modifies volume in-place; if volume increases, moves order to tail of level
+    bool modify_order_volume(Order* order, Volume new_volume);
+
     [[nodiscard]] PriceLevel* find_level(Price price) const noexcept;
 
     // Calculates available liquidity up to a limit price without heap allocation

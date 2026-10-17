@@ -57,7 +57,8 @@ enum class MarketDataMsgType : uint8_t {
     OrderExecuted = 'E',
     OrderCancel = 'X',
     OrderDelete = 'D',
-    DepthSnapshot = 'S'
+    DepthSnapshot = 'S',
+    OrderReplace = 'U'
 };
 
 #pragma pack(push, 1)
@@ -98,6 +99,16 @@ struct OrderDeleteMsg {
     MarketDataMsgType msg_type{MarketDataMsgType::OrderDelete};
     uint64_t sequence_number{0};
     OrderId order_id{0};
+    Timestamp timestamp{0};
+};
+
+// L3 Incremental: Order modified in place or replaced
+struct OrderReplaceMsg {
+    MarketDataMsgType msg_type{MarketDataMsgType::OrderReplace};
+    uint64_t sequence_number{0};
+    OrderId order_id{0};
+    int64_t new_price_raw{0};
+    Volume new_volume{0};
     Timestamp timestamp{0};
 };
 
@@ -142,9 +153,34 @@ static_assert(std::is_trivially_copyable_v<OrderDeleteMsg>,
 static_assert(std::is_standard_layout_v<OrderDeleteMsg>,
               "OrderDeleteMsg must have standard layout");
 
+static_assert(std::is_trivially_copyable_v<OrderReplaceMsg>,
+              "OrderReplaceMsg must be trivially copyable");
+static_assert(std::is_standard_layout_v<OrderReplaceMsg>,
+              "OrderReplaceMsg must have standard layout");
+
 static_assert(std::is_trivially_copyable_v<DepthSnapshotMsg>,
               "DepthSnapshotMsg must be trivially copyable");
 static_assert(std::is_standard_layout_v<DepthSnapshotMsg>,
               "DepthSnapshotMsg must have standard layout");
+
+constexpr OrderReplaceMsg to_network(const OrderReplaceMsg& msg) noexcept {
+    OrderReplaceMsg net = msg;
+    net.sequence_number = to_network_endian(net.sequence_number);
+    net.order_id = to_network_endian(net.order_id);
+    net.new_price_raw = to_network_endian(net.new_price_raw);
+    net.new_volume = to_network_endian(net.new_volume);
+    net.timestamp = to_network_endian(net.timestamp);
+    return net;
+}
+
+constexpr OrderReplaceMsg from_network(const OrderReplaceMsg& msg) noexcept {
+    OrderReplaceMsg host = msg;
+    host.sequence_number = from_network_endian(host.sequence_number);
+    host.order_id = from_network_endian(host.order_id);
+    host.new_price_raw = from_network_endian(host.new_price_raw);
+    host.new_volume = from_network_endian(host.new_volume);
+    host.timestamp = from_network_endian(host.timestamp);
+    return host;
+}
 
 }  // namespace orderbook

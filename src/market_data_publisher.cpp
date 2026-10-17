@@ -95,4 +95,18 @@ void MarketDataPublisher::on_order_filled(const OrderFilled& event) noexcept {
     (void)event;
 }
 
+void MarketDataPublisher::on_order_amended(const OrderAmended& event) noexcept {
+    OrderReplaceMsg msg{
+        .msg_type = MarketDataMsgType::OrderReplace,
+        .sequence_number = ++sequence_number_,
+        .order_id = event.order_id,
+        .new_price_raw = event.new_price.raw(),
+        .new_volume = event.new_quantity,
+        .timestamp = event.timestamp,
+    };
+    if (sink_) {
+        sink_->on_order_replaced(msg);
+    }
+}
+
 }  // namespace orderbook
