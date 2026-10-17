@@ -43,16 +43,18 @@ else()
     endif()
 endif()
 
-# Core order book interface library
-add_library(orderbook_core INTERFACE)
+# Core order book static library
+add_library(orderbook_core STATIC
+    src/alloc_guard.cpp
+)
 
-target_include_directories(orderbook_core INTERFACE
+target_include_directories(orderbook_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-target_compile_features(orderbook_core INTERFACE cxx_std_20)
-target_link_libraries(orderbook_core INTERFACE orderbook_flags)
+target_compile_features(orderbook_core PUBLIC cxx_std_20)
+target_link_libraries(orderbook_core PUBLIC orderbook_flags)
 
 # Testing configuration
 if(ORDERBOOK_BUILD_TESTS)

@@ -17,6 +17,10 @@ add_executable(orderbook_tests
     test_types.cpp
     test_price.cpp
     test_events.cpp
+    test_order.cpp
+    test_intrusive_list.cpp
+    test_memory_pool.cpp
+    test_alloc_guard.cpp
 )
 
 target_link_libraries(orderbook_tests PRIVATE

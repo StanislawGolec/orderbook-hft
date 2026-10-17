@@ -89,29 +89,38 @@ Establish the modern C++20 build system, rigorous compiler warning configuration
 ---
 
 ## Stage 2: Zero-Allocation Contiguous Memory Subsystem and Intrusive Lists
-*Status: [ ] Pending*
+*Status: [x] COMPLETED*
 
 ### Objective
 Engineer a dedicated memory management architecture ensuring absolute zero heap allocation on the hot path, coupled with intrusive doubly-linked list structures for cache-friendly $O(1)$ node manipulation.
 
-### Tasks to Implement
-- [ ] `StaticArenaPool<T, Capacity>`: Contiguous flat pre-allocated buffer indexed via free-list stack of indices or pointers.
-  - `acquire()`: Pops an element from the free list in $\mathcal{O}(1)$.
-  - `release(T*)`: Pushes the element back onto the free list in $\mathcal{O}(1)$.
-  - Explicit alignment: `alignas(64)` to align the pool and node elements with CPU cache lines.
-- [ ] `AllocationGuard` and Hot-Path Interceptor:
-  - Override global `operator new`, `operator new[]`, `operator delete`, and `operator delete[]`.
-  - Thread-local `g_disallow_allocations` flag asserting if any heap allocation occurs in guarded regions.
-- [ ] Intrusive Doubly-Linked List (`IntrusiveList<T>`):
-  - Embed `next` and `prev` pointers directly within `Order`.
+### Tasks and Status
+- [x] **`StaticArenaPool<T, Capacity>` & `ObjectPool<T>` (`include/orderbook/memory_pool.hpp`):**
+  - Contiguous pre-allocated buffers indexed via free-list stack of pointers for $\mathcal{O}(1)$ `acquire()` and `release()`.
+  - 64-byte aligned memory blocks (`std::align_val_t{64}`).
+  - Lifecycle methods: `construct()`, `destroy()`, `contains()`, `reset()`, `capacity()`, `available_count()`, `allocated_count()`.
+  - Compile-time fixed arena `StaticArenaPool<T, Capacity>` and runtime pre-allocated `ObjectPool<T>`.
+- [x] **`AllocationGuard` & Hot-Path Interceptor (`include/orderbook/alloc_guard.hpp`, `src/alloc_guard.cpp`):**
+  - Overrode global `operator new`, `operator new[]`, `operator delete`, `operator delete[]`, and aligned variations.
+  - Thread-local `g_disallow_allocations` flag asserting / throwing `std::bad_alloc` if dynamic allocation is attempted in hot path.
+  - RAII guard `AllocationGuard` for scoped zero-allocation verification.
+- [x] **Intrusive Doubly-Linked List (`include/orderbook/intrusive_list.hpp`):**
+  - `IntrusiveLinkable` concept requiring `next` and `prev` node pointers embedded directly within element structures.
   - $\mathcal{O}(1)$ `push_back(T*)` (append arriving order to tail).
   - $\mathcal{O}(1)$ `pop_front()` (extract best-priority order for execution).
   - $\mathcal{O}(1)$ `erase(T*)` (cancel order by direct pointer without list traversal).
-- [ ] Cache-aligned `Order` layout:
-  - 64-byte layout fitting exactly inside a single CPU cache line (`alignas(64)`).
+  - Iterator support (`begin()`, `end()`) for range-for traversal, `clear()`, and move semantics.
+- [x] **Cache-Aligned 64-Byte `Order` Layout (`include/orderbook/order.hpp`):**
+  - Exactly 64 bytes (`sizeof(Order) == 64`), 64-byte alignment (`alignas(64)`).
+  - Fits within a single CPU cache line, eliminating cache line splits and false sharing.
+- [x] **Unit Testing & Verification:**
+  - `tests/test_order.cpp`, `tests/test_intrusive_list.cpp`, `tests/test_memory_pool.cpp`, `tests/test_alloc_guard.cpp`.
+  - Total 32 test cases and 364 assertions passed with zero dynamic heap allocations on the hot path.
 
-### What to Use
-- `alignas(64)`, placement `new`, static memory arena, intrusive node pointers, `AllocationGuard`.
+### What Was Used
+- **C++ Features:** `alignas(64)`, placement `new`, `std::align_val_t`, C++20 concepts (`IntrusiveLinkable`), RAII guards.
+- **Hardware Sympathy:** 64-byte cache line alignment, contiguous flat arenas, intrusive node pointers.
+- **Quality Tools:** Catch2 v3, CTest, `.clang-format`.
 
 ---
 
@@ -253,7 +262,7 @@ Create a repository setup with multi-platform CI pipelines, architectural diagra
 | Stage | Focus Area | Status | Deliverables | Verification |
 | :--- | :--- | :--- | :--- | :--- |
 | **Stage 1** | Toolchain & Types | **COMPLETED** | CMake, C++20 types, `Price` fixed-point, Clang tools, Tests | 18/18 tests passed, strict warnings |
-| **Stage 2** | Memory & Lists | Pending | `StaticArenaPool`, `IntrusiveList`, `AllocationGuard` | 0 allocs on hot path, $O(1)$ operations |
+| **Stage 2** | Memory & Lists | **COMPLETED** | `StaticArenaPool`, `IntrusiveList`, `AllocationGuard`, `Order` | 32/32 tests passed, 0 allocs on hot path |
 | **Stage 3** | LOB Structure | Pending | `PriceLevel`, `OrderBookSide`, Flat Hash Index | $O(1)$ cancellation by pointer |
 | **Stage 4** | Matching Core | Pending | Limit, Market, IOC, FOK matching logic | Correct execution across all order types |
 | **Stage 5** | Concurrency | Pending | SPSC lock-free queue, CPU core affinity pinning | Zero lock contention, cache isolation |
