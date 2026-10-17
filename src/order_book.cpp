@@ -4,7 +4,7 @@ namespace orderbook {
 
 OrderBook::OrderBook(size_t max_orders, size_t max_levels)
     : order_pool_(max_orders), level_pool_(max_levels), order_index_(max_orders),
-      bids_(Side::Buy, level_pool_), asks_(Side::Sell, level_pool_) {}
+      bids_(Side::Buy, level_pool_, max_levels), asks_(Side::Sell, level_pool_, max_levels) {}
 
 void OrderBook::preallocate(size_t max_orders, size_t max_levels) {
     order_pool_.init(max_orders);
@@ -12,17 +12,21 @@ void OrderBook::preallocate(size_t max_orders, size_t max_levels) {
     order_index_.init(max_orders);
     bids_.clear();
     asks_.clear();
+    bids_.reserve(max_levels);
+    asks_.reserve(max_levels);
 }
 
 Order* OrderBook::add_limit_order(OrderId id, Side side, Price price, Volume volume, Timestamp ts,
-                                  TimeInForce tif) {
+                                  TimeInForce tif, Volume initial_volume) {
     if (id == INVALID_ORDER_ID || volume == 0 || order_index_.contains(id)) {
         return nullptr;
     }
 
+    Volume init_vol = (initial_volume > 0) ? initial_volume : volume;
+
     Order* order = order_pool_.construct(Order{.id = id,
                                                .price = price,
-                                               .initial_volume = volume,
+                                               .initial_volume = init_vol,
                                                .remaining_volume = volume,
                                                .timestamp = ts,
                                                .side = side,
@@ -62,6 +66,34 @@ bool OrderBook::cancel_order(OrderId id) {
     order_index_.erase(id);
     order_pool_.destroy(order);
     return true;
+}
+
+void OrderBook::remove_filled_order(Order* order) {
+    if (!order) {
+        return;
+    }
+
+    OrderId id = order->id;
+    if (order->side == Side::Buy) {
+        bids_.remove_order(order);
+    } else {
+        asks_.remove_order(order);
+    }
+
+    order_index_.erase(id);
+    order_pool_.destroy(order);
+}
+
+void OrderBook::reduce_order_volume(Order* order, Volume filled_qty) {
+    if (!order || filled_qty == 0) {
+        return;
+    }
+
+    if (order->side == Side::Buy) {
+        bids_.reduce_order_volume(order, filled_qty);
+    } else {
+        asks_.reduce_order_volume(order, filled_qty);
+    }
 }
 
 Order* OrderBook::find_order(OrderId id) const noexcept {

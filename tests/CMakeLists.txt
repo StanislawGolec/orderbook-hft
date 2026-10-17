@@ -25,6 +25,7 @@ add_executable(orderbook_tests
     test_order_index.cpp
     test_order_book_side.cpp
     test_order_book.cpp
+    test_matching_engine.cpp
 )
 
 target_link_libraries(orderbook_tests PRIVATE

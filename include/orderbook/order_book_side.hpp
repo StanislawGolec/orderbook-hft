@@ -54,6 +54,11 @@ public:
 
     [[nodiscard]] PriceLevel* find_level(Price price) const noexcept;
 
+    // Calculates available liquidity up to a limit price without heap allocation
+    [[nodiscard]] Volume available_volume_up_to(Price limit_price) const noexcept;
+
+    void reserve(size_t capacity) { levels_.reserve(capacity); }
+
     // Returns top N market depth levels
     [[nodiscard]] std::vector<LevelDepth> get_depth(size_t max_levels = 10) const;
 

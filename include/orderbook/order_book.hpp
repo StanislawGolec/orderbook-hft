@@ -23,10 +23,16 @@ public:
 
     // Adds a resting limit order to the book and index
     Order* add_limit_order(OrderId id, Side side, Price price, Volume volume, Timestamp ts,
-                           TimeInForce tif = TimeInForce::GTC);
+                           TimeInForce tif = TimeInForce::GTC, Volume initial_volume = 0);
 
     // Cancels an existing order in O(1) by OrderId
     bool cancel_order(OrderId id);
+
+    // Removes an order that has been fully filled
+    void remove_filled_order(Order* order);
+
+    // Reduces volume of an order upon partial fill
+    void reduce_order_volume(Order* order, Volume filled_qty);
 
     [[nodiscard]] Order* find_order(OrderId id) const noexcept;
 

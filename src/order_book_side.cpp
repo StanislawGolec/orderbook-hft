@@ -10,6 +10,10 @@ OrderBookSide::OrderBookSide(Side side, ObjectPool<PriceLevel>& level_pool, size
 }
 
 PriceLevel* OrderBookSide::find_level(Price price) const noexcept {
+    if (best_level_ && best_level_->price() == price) {
+        return best_level_;
+    }
+
     auto it = std::lower_bound(levels_.begin(), levels_.end(), price,
                                [this](const PriceLevel* level, Price target_price) {
                                    return is_better_price(level->price(), target_price);
@@ -50,18 +54,23 @@ bool OrderBookSide::remove_order(Order* order) {
         return false;
     }
 
-    auto it = std::lower_bound(levels_.begin(), levels_.end(), order->price,
-                               [this](const PriceLevel* level, Price target_price) {
-                                   return is_better_price(level->price(), target_price);
-                               });
+    auto it = levels_.end();
+    if (best_level_ && best_level_->price() == order->price) {
+        it = levels_.begin();
+    } else {
+        it = std::lower_bound(levels_.begin(), levels_.end(), order->price,
+                              [this](const PriceLevel* level, Price target_price) {
+                                  return is_better_price(level->price(), target_price);
+                              });
+    }
 
     if (it == levels_.end() || (*it)->price() != order->price) {
         return false;
     }
 
     PriceLevel* level = *it;
-    level->remove_order(order);
     total_volume_ -= order->remaining_volume;
+    level->remove_order(order);
 
     if (level->empty()) {
         levels_.erase(it);
@@ -82,6 +91,21 @@ void OrderBookSide::reduce_order_volume(Order* order, Volume filled_qty) {
         level->reduce_volume(filled_qty);
         total_volume_ -= filled_qty;
     }
+    order->fill(filled_qty);
+}
+
+Volume OrderBookSide::available_volume_up_to(Price limit_price) const noexcept {
+    Volume vol = 0;
+    for (const PriceLevel* level : levels_) {
+        if (side_ == Side::Buy && level->price() < limit_price) {
+            break;
+        }
+        if (side_ == Side::Sell && level->price() > limit_price) {
+            break;
+        }
+        vol += level->total_volume();
+    }
+    return vol;
 }
 
 std::vector<LevelDepth> OrderBookSide::get_depth(size_t max_levels) const {
