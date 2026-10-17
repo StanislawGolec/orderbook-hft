@@ -49,6 +49,8 @@ add_library(orderbook_core STATIC
     src/order_book_side.cpp
     src/order_book.cpp
     src/matching_engine.cpp
+    src/cpu_affinity.cpp
+    src/engine_service.cpp
 )
 
 target_include_directories(orderbook_core PUBLIC
