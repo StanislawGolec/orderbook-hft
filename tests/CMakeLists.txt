@@ -1,0 +1,29 @@
+include(FetchContent)
+
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v3.5.2
+    GIT_SHALLOW TRUE
+)
+
+set(CATCH_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+set(CATCH_INSTALL_EXTRAS OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(Catch2)
+
+add_executable(orderbook_tests
+    test_types.cpp
+    test_price.cpp
+    test_events.cpp
+)
+
+target_link_libraries(orderbook_tests PRIVATE
+    orderbook_core
+    Catch2::Catch2WithMain
+)
+
+include(CTest)
+include(Catch)
+catch_discover_tests(orderbook_tests)
