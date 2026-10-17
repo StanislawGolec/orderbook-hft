@@ -2,12 +2,59 @@
 
 #include <concepts>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <ostream>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
 namespace orderbook {
+
+// 8-byte compact fixed-width Symbol Identifier fitting in a single 64-bit register
+struct SymbolId {
+    uint64_t raw_value{0};
+
+    constexpr SymbolId() noexcept = default;
+    constexpr explicit SymbolId(uint64_t raw) noexcept : raw_value(raw) {}
+
+    static constexpr SymbolId from_string(std::string_view str) noexcept {
+        uint64_t val = 0;
+        size_t len = str.size() > 8 ? 8 : str.size();
+        for (size_t i = 0; i < len; ++i) {
+            val |= (static_cast<uint64_t>(static_cast<uint8_t>(str[i])) << (i * 8));
+        }
+        return SymbolId(val);
+    }
+
+    [[nodiscard]] constexpr bool empty() const noexcept { return raw_value == 0; }
+
+    constexpr auto operator<=>(const SymbolId&) const noexcept = default;
+    constexpr bool operator==(const SymbolId&) const noexcept = default;
+
+    [[nodiscard]] std::string to_string() const {
+        std::string res;
+        res.reserve(8);
+        uint64_t temp = raw_value;
+        for (size_t i = 0; i < 8; ++i) {
+            char c = static_cast<char>(temp & 0xFF);
+            if (c == '\0') {
+                break;
+            }
+            res.push_back(c);
+            temp >>= 8;
+        }
+        return res;
+    }
+};
+
+static_assert(sizeof(SymbolId) == 8, "SymbolId must be exactly 8 bytes");
+static_assert(std::is_trivially_copyable_v<SymbolId>, "SymbolId must be trivially copyable");
+static_assert(std::is_standard_layout_v<SymbolId>, "SymbolId must have standard layout");
+
+inline std::ostream& operator<<(std::ostream& os, const SymbolId& sym) {
+    return os << sym.to_string();
+}
 
 // Core identifier and scalar aliases
 using OrderId = uint64_t;
@@ -161,3 +208,10 @@ template<typename T>
 concept SerializableEvent = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
 
 }  // namespace orderbook
+
+template<>
+struct std::hash<orderbook::SymbolId> {
+    size_t operator()(const orderbook::SymbolId& sym) const noexcept {
+        return std::hash<uint64_t>{}(sym.raw_value);
+    }
+};
