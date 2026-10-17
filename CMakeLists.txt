@@ -51,6 +51,7 @@ add_library(orderbook_core STATIC
     src/matching_engine.cpp
     src/cpu_affinity.cpp
     src/engine_service.cpp
+    src/invariant_checker.cpp
 )
 
 target_include_directories(orderbook_core PUBLIC

@@ -28,6 +28,7 @@ add_executable(orderbook_tests
     test_matching_engine.cpp
     test_spsc_queue.cpp
     test_engine_service.cpp
+    test_fuzzing.cpp
 )
 
 target_link_libraries(orderbook_tests PRIVATE

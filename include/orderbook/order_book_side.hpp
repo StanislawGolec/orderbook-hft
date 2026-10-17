@@ -31,6 +31,8 @@ public:
 
     [[nodiscard]] Volume total_volume() const noexcept { return total_volume_; }
 
+    [[nodiscard]] const std::vector<PriceLevel*>& levels() const noexcept { return levels_; }
+
     [[nodiscard]] PriceLevel* best_level() noexcept { return best_level_; }
 
     [[nodiscard]] const PriceLevel* best_level() const noexcept { return best_level_; }

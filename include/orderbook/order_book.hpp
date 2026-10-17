@@ -53,6 +53,7 @@ public:
     [[nodiscard]] const OrderBookSide& asks() const noexcept { return asks_; }
 
     [[nodiscard]] ObjectPool<Order>& order_pool() noexcept { return order_pool_; }
+    [[nodiscard]] const FlatOrderIndex& order_index() const noexcept { return order_index_; }
 
     // Market depth snapshots
     [[nodiscard]] std::vector<LevelDepth> get_bids_depth(size_t max_levels = 10) const;

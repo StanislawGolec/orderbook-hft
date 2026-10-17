@@ -156,6 +156,11 @@ public:
     [[nodiscard]] constexpr Iterator begin() noexcept { return Iterator(head_); }
     [[nodiscard]] constexpr Iterator end() noexcept { return Iterator(nullptr); }
 
+    [[nodiscard]] constexpr Iterator begin() const noexcept { return Iterator(head_); }
+    [[nodiscard]] constexpr Iterator end() const noexcept { return Iterator(nullptr); }
+    [[nodiscard]] constexpr Iterator cbegin() const noexcept { return Iterator(head_); }
+    [[nodiscard]] constexpr Iterator cend() const noexcept { return Iterator(nullptr); }
+
 private:
     T* head_{nullptr};
     T* tail_{nullptr};
