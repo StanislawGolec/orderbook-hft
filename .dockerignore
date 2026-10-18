@@ -1,0 +1,13 @@
+.git
+build
+build_*
+*.sln
+*.vcxproj*
+.cache
+.vscode
+.idea
+Testing
+x64
+Release
+Debug
+CMakeFiles

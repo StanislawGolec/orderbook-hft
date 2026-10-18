@@ -1,0 +1,27 @@
+[Unit]
+Description=OrderBook-HFT Market Replay & Nanosecond Profiling Engine
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/orderbook-hft
+ExecStart=/opt/orderbook-hft/market_replay --ops 10000000
+Restart=always
+RestartSec=5s
+
+# Low-Latency Systems Tuning:
+# 1. Pin process to isolated physical CPU cores 2 and 3
+CPUAffinity=2 3
+
+# 2. Maximum priority scheduling
+Nice=-20
+
+# 3. Unlimited memory locking to prevent swapping
+LimitMEMLOCK=infinity
+
+# 4. Standard process limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
