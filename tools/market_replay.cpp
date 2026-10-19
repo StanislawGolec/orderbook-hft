@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
-        if (arg == "--ops" && i + 1 < argc) {
+        if ((arg == "--ops" || arg == "--count") && i + 1 < argc) {
             total_ops = static_cast<size_t>(std::strtoull(argv[++i], nullptr, 10));
         } else if (arg == "--seed" && i + 1 < argc) {
             seed = std::strtoull(argv[++i], nullptr, 10);
@@ -31,8 +31,8 @@ int main(int argc, char* argv[]) {
     std::cout << " Operations:       " << total_ops << "\n";
     std::cout << " Random Seed:      0x" << std::hex << seed << std::dec << "\n";
 
-    OrderBook book(total_ops * 2, 50000);
-    book.preallocate(total_ops * 2, 50000);
+    const size_t max_active_orders = std::min<size_t>(total_ops, 500000);
+    OrderBook book(max_active_orders, 50000);
     MatchingEngine engine(book);
 
     LatencyProfiler profiler;

@@ -62,13 +62,14 @@ Empirical benchmarks collected with Google Benchmark v1.8.3 on modern x86-64 har
 
 | Benchmark Operation | Throughput (ops/sec) | Latency (Mean) | Latency (p50) | Latency (p90) | Latency (p99) | Heap Allocs |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`BM_InsertLimitOrder_Resting`** | **8.65M - 12.17M ops/s** | 115 ns | 119 ns | 131 ns | 131 ns | **0 allocs/op** |
-| **`BM_CancelOrder_Direct`** | **8.90M - 9.96M ops/s** | 113 ns | 116 ns | 130 ns | 130 ns | **0 allocs/op** |
-| **`BM_MatchOrder_FullFill`** | **29.54M - 40.96M ops/s** | **28 - 41 ns** | **42 ns** | **48 ns** | **48 ns** | **0 allocs/op** |
-| **`BM_MarketOrder_SweepLevels`** | **23.23M - 28.90M levels/s** | 43 ns / lvl | 46 ns / lvl | 47 ns / lvl | 47 ns / lvl | **0 allocs/op** |
-| **`BM_SPSC_Throughput`** | **53.69M - 66.67M msg/s** | **15 - 19 ns** | **19 ns** | **21 ns** | **21 ns** | **0 allocs/op** |
+| **`BM_InsertLimitOrder_Resting`** | **5.31M - 5.68M ops/s** | 177 ns | 176 ns | 177 ns | 177 ns | **0 allocs/op** |
+| **`BM_CancelOrder_Direct`** | **9.66M - 12.19M ops/s** | **37 - 43 ns** | **37 ns** | **39 ns** | **39 ns** | **0 allocs/op** |
+| **`BM_AmendOrder_InPlace`** | **8.93M - 10.67M ops/s** | **26 - 32 ns** | **26 ns** | **26 ns** | **26 ns** | **0 allocs/op** |
+| **`BM_MatchOrder_FullFill`** | **6.25M - 6.90M ops/s** | 113 ns | 136 ns | 136 ns | 136 ns | **0 allocs/op** |
+| **`BM_MarketOrder_SweepLevels`** | **18.37M - 21.37M levels/s** | 46 ns / lvl | 47 ns / lvl | 47 ns / lvl | 47 ns / lvl | **0 allocs/op** |
+| **`BM_SPSC_Throughput`** | **61.54M - 92.31M msg/s** | **11 - 16 ns** | **15 ns** | **18 ns** | **18 ns** | **0 allocs/op** |
 
-> **Key Takeaway:** Full crossing order matches complete in **~28 to 41 nanoseconds** on average, and lock-free SPSC inter-thread communication sustains over **53 million messages per second** with **zero heap allocations**.
+> **Key Takeaway:** Direct order cancellations and in-place volume amendments execute in **~26 to 37 nanoseconds** (p50) via direct pool indexing, and lock-free SPSC inter-thread communication sustains up to **92 million messages per second** with **zero heap allocations**.
 
 ---
 
@@ -87,17 +88,20 @@ Empirical benchmarks collected with Google Benchmark v1.8.3 on modern x86-64 har
 ### 3. Price-Time Priority & Execution Mechanics
 - **Price Priority:** Highest Bids and Lowest Asks execute first.
 - **Time Priority:** Orders at the exact same tick reside in an intrusive doubly linked list (`IntrusiveList<Order>`) guaranteeing strict $O(1)$ FIFO dispatch.
+- **Direct Level Resolution:** 64-byte `Order` struct stores a 32-bit `level_pool_idx`, allowing $O(1)$ single-instruction resolution of the parent `PriceLevel` on cancellations, partial fills, and volume amends without binary searching sorted level vectors.
+- **Zero-Tombstone Backward-Shift Hashing:** `FlatOrderIndex` utilizes backward-shift deletion to eliminate tombstone clustering and maintain $O(1)$ lookup guarantees under indefinite cancel/replace churn with a compact 16-byte entry layout.
 - **Maker Price Priority:** Aggressive crossing orders execute at the maker's resting price, giving price improvement to the incoming taker.
 - **Supported Order Instructions:**
   - `Limit Orders`: Resting orders with GTC instructions.
   - `Market Orders`: Aggressive sweeps across opposing levels; cancels unfilled volume.
   - `Immediate-Or-Cancel (IOC)`: Immediate partial execution; cancels unfilled volume without resting.
   - `Fill-Or-Kill (FOK)`: Pre-check depth walk (`available_volume_up_to`); atomic full sweep or instant rejection with zero book mutation.
+  - `In-Place Amendments`: FIFO time priority preservation when reducing volume; atomic repositioning on price/volume increase.
 
 ### 4. Binary Market Data Protocol & Chaos Resilience
-- **Compact POD Wire Format:** ITCH/OUCH style binary structs (`AddOrderMsg`, `OrderExecutedMsg`, `OrderDeleteMsg`, `DepthSnapshotMsg`).
+- **Compact POD Wire Format:** ITCH/OUCH style binary structs (`AddOrderMsg`, `OrderExecutedMsg`, `OrderDeleteMsg`, `OrderReplaceMsg`, `DepthSnapshotMsg`).
 - **L2 / L3 Streaming:** Sequenced feeds with monotonically increasing 64-bit sequence numbers.
-- **Chaos Fault Injection:** [`FeedHandler`](include/orderbook/feed_handler.hpp) detects packet drops, missing sequences, and duplicate messages, automatically resynchronizing state via authoritative L2 depth snapshots.
+- **Chaos Fault Injection:** [`FeedHandler`](include/orderbook/feed_handler.hpp) detects packet drops, missing sequences, and duplicate messages, automatically resynchronizing state via authoritative L2 depth snapshots with zero heap allocation during gap logging.
 
 ### 5. Automated Financial Invariant Verification
 - Deterministic property fuzzer executing 100,000+ randomized operations per run verifying:
@@ -112,8 +116,8 @@ Empirical benchmarks collected with Google Benchmark v1.8.3 on modern x86-64 har
 | Decision | Selection | Alternative | Rationale |
 | :--- | :--- | :--- | :--- |
 | **Language** | **Modern C++20** | Archaic C / C++11 | Compile-time concepts (`NumericTick`, `SerializableEvent`), `constexpr` price arithmetic, and templates deliver zero-cost abstraction without runtime indirection. |
-| **Concurrency** | **Single-Writer Core** | Mutex / Shared Locking | Completely eliminates mutex contention, spinlock thrashing, priority inversions, and kernel context switches. |
-| **Index Lookup** | **Flat Hash Table** | `std::map` (RB-Tree) | Open addressing with linear probing maximizes contiguous cache locality and eliminates pointer chasing across tree nodes. |
+| **Concurrency** | **Single-Writer Core + MPSC Gateway** | Mutex / Shared Locking | Single-writer core eliminates lock contention and context switches; atomic BBO snapshots and MPSC CAS ingestion provide thread-safe multi-client connectivity. |
+| **Index Lookup** | **Backward-Shift Flat Hash Table** | Tombstones / `std::map` | Backward-shift deletion prevents tombstone clustering and infinite probe loops while keeping entries at 16 bytes (4 per 64B cache line). |
 | **Order Queuing** | **Intrusive Doubly Linked List** | `std::list` / vector | Pointers embedded directly into the 64-byte `Order` structure eliminate separate node allocations and provide true $O(1)$ node unlinking. |
 
 ---
@@ -136,7 +140,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DORDERBOOK_BUILD_TESTS=ON -DORDERBOOK
 # Build all targets
 cmake --build build --config Release
 
-# Run Catch2 unit test suite (70 test cases, 504k+ assertions)
+# Run Catch2 unit test suite (93 test cases, 654k+ assertions)
 ./build/tests/Release/orderbook_tests.exe
 
 # Run Google Benchmark performance suite

@@ -9,6 +9,8 @@
 
 namespace orderbook {
 
+inline constexpr uint32_t INVALID_LEVEL_IDX = UINT32_MAX;
+
 // Cache-line aligned Order structure fitting exactly in 64 bytes (1 cache line)
 struct alignas(64) Order {
     OrderId id{INVALID_ORDER_ID};
@@ -21,7 +23,8 @@ struct alignas(64) Order {
     Side side{Side::Buy};
     OrderType type{OrderType::Limit};
     TimeInForce tif{TimeInForce::GTC};
-    uint8_t pad[5]{0, 0, 0, 0, 0};
+    uint8_t pad{0};
+    uint32_t level_pool_idx{INVALID_LEVEL_IDX};
 
     [[nodiscard]] constexpr bool is_filled() const noexcept { return remaining_volume == 0; }
 

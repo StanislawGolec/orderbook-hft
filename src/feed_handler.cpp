@@ -18,9 +18,11 @@ bool FeedHandler::check_sequence(uint64_t seq) {
 
     if (seq > expected_sequence_number_) {
         uint64_t missing = seq - expected_sequence_number_;
-        detected_gaps_.push_back(SequenceGap{.expected_seq = expected_sequence_number_,
-                                             .received_seq = seq,
-                                             .missing_count = missing});
+        if (detected_gaps_.size() < detected_gaps_.capacity()) {
+            detected_gaps_.push_back(SequenceGap{.expected_seq = expected_sequence_number_,
+                                                 .received_seq = seq,
+                                                 .missing_count = missing});
+        }
         ++gap_count_;
         in_sync_ = false;
         expected_sequence_number_ = seq + 1;
@@ -93,7 +95,9 @@ bool FeedHandler::process_message(const uint8_t* buffer, size_t length) {
 }
 
 bool FeedHandler::on_add_order(const AddOrderMsg& msg) {
-    check_sequence(msg.sequence_number);
+    if (!check_sequence(msg.sequence_number)) {
+        return false;
+    }
     ++messages_processed_;
 
     Price p = Price::from_raw(msg.price_raw);
@@ -101,11 +105,15 @@ bool FeedHandler::on_add_order(const AddOrderMsg& msg) {
         if (p > bbo_.bid_price || bbo_.bid_price == Price::zero()) {
             bbo_.bid_price = p;
             bbo_.bid_volume = msg.volume;
+        } else if (p == bbo_.bid_price) {
+            bbo_.bid_volume += msg.volume;
         }
     } else {
         if (p < bbo_.ask_price || bbo_.ask_price == Price::zero()) {
             bbo_.ask_price = p;
             bbo_.ask_volume = msg.volume;
+        } else if (p == bbo_.ask_price) {
+            bbo_.ask_volume += msg.volume;
         }
     }
 
@@ -113,25 +121,33 @@ bool FeedHandler::on_add_order(const AddOrderMsg& msg) {
 }
 
 bool FeedHandler::on_order_executed(const OrderExecutedMsg& msg) {
-    check_sequence(msg.sequence_number);
+    if (!check_sequence(msg.sequence_number)) {
+        return false;
+    }
     ++messages_processed_;
     return true;
 }
 
 bool FeedHandler::on_order_cancelled(const OrderCancelMsg& msg) {
-    check_sequence(msg.sequence_number);
+    if (!check_sequence(msg.sequence_number)) {
+        return false;
+    }
     ++messages_processed_;
     return true;
 }
 
 bool FeedHandler::on_order_deleted(const OrderDeleteMsg& msg) {
-    check_sequence(msg.sequence_number);
+    if (!check_sequence(msg.sequence_number)) {
+        return false;
+    }
     ++messages_processed_;
     return true;
 }
 
 bool FeedHandler::on_order_replaced(const OrderReplaceMsg& msg) {
-    check_sequence(msg.sequence_number);
+    if (!check_sequence(msg.sequence_number)) {
+        return false;
+    }
     ++messages_processed_;
     return true;
 }

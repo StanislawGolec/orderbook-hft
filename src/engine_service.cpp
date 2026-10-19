@@ -49,10 +49,34 @@ bool EngineService::submit_order(const OrderRequest& request) {
     return input_queue_.try_push(cmd);
 }
 
+bool EngineService::submit_order_mpsc(const OrderRequest& request) {
+    OrderCommand cmd{.type = CommandType::NewOrder,
+                     .request = request,
+                     .cancel_id = INVALID_ORDER_ID,
+                     .timestamp = request.timestamp};
+    while (producer_lock_.test_and_set(std::memory_order_acquire)) {
+        cpu_pause();
+    }
+    bool ok = input_queue_.try_push(cmd);
+    producer_lock_.clear(std::memory_order_release);
+    return ok;
+}
+
 bool EngineService::cancel_order(OrderId id, Timestamp ts) {
     OrderCommand cmd{
         .type = CommandType::CancelOrder, .request = {}, .cancel_id = id, .timestamp = ts};
     return input_queue_.try_push(cmd);
+}
+
+bool EngineService::cancel_order_mpsc(OrderId id, Timestamp ts) {
+    OrderCommand cmd{
+        .type = CommandType::CancelOrder, .request = {}, .cancel_id = id, .timestamp = ts};
+    while (producer_lock_.test_and_set(std::memory_order_acquire)) {
+        cpu_pause();
+    }
+    bool ok = input_queue_.try_push(cmd);
+    producer_lock_.clear(std::memory_order_release);
+    return ok;
 }
 
 bool EngineService::amend_order(const AmendOrderRequest& request) {
@@ -62,6 +86,20 @@ bool EngineService::amend_order(const AmendOrderRequest& request) {
                      .amend_request = request,
                      .timestamp = request.timestamp};
     return input_queue_.try_push(cmd);
+}
+
+bool EngineService::amend_order_mpsc(const AmendOrderRequest& request) {
+    OrderCommand cmd{.type = CommandType::AmendOrder,
+                     .request = {},
+                     .cancel_id = INVALID_ORDER_ID,
+                     .amend_request = request,
+                     .timestamp = request.timestamp};
+    while (producer_lock_.test_and_set(std::memory_order_acquire)) {
+        cpu_pause();
+    }
+    bool ok = input_queue_.try_push(cmd);
+    producer_lock_.clear(std::memory_order_release);
+    return ok;
 }
 
 void EngineService::run() {
@@ -76,7 +114,7 @@ void EngineService::run() {
         OrderCommand cmd;
         if (input_queue_.try_pop(cmd)) {
             process_command(cmd);
-            ++processed_commands_;
+            processed_commands_.fetch_add(1, std::memory_order_relaxed);
         } else {
             cpu_pause();
         }
@@ -86,7 +124,7 @@ void EngineService::run() {
     OrderCommand cmd;
     while (input_queue_.try_pop(cmd)) {
         process_command(cmd);
-        ++processed_commands_;
+        processed_commands_.fetch_add(1, std::memory_order_relaxed);
     }
 
     is_running_.store(false, std::memory_order_release);

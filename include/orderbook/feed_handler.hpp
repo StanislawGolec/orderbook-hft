@@ -27,7 +27,9 @@ struct BBOQuote {
 // Client-side Market Data Feed Handler with sequence gap detection and snapshot recovery
 class FeedHandler {
 public:
-    FeedHandler() = default;
+    explicit FeedHandler(size_t max_expected_gaps = 128) {
+        detected_gaps_.reserve(max_expected_gaps);
+    }
 
     // Ingests raw binary packet from network
     bool process_message(const uint8_t* buffer, size_t length);

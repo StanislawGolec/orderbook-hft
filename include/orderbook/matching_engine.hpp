@@ -77,6 +77,8 @@ public:
     void reset_match_id(uint64_t start_id = 0) noexcept { match_id_sequence_ = start_id; }
 
 private:
+    bool execute_matching_and_rest(const OrderRequest& request, bool emit_rested_event);
+
     OrderBook& book_;
     IMatchingListener* listener_{nullptr};
     uint64_t match_id_sequence_{0};

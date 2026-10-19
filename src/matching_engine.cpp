@@ -45,7 +45,6 @@ bool MatchingEngine::process_order(const OrderRequest& request) {
 
     const bool is_market = (request.type == OrderType::Market);
     const bool is_fok = (request.type == OrderType::FOK || request.tif == TimeInForce::FOK);
-    const bool is_ioc = (request.type == OrderType::IOC || request.tif == TimeInForce::IOC);
 
     if (!is_market && request.price <= Price::zero()) [[unlikely]] {
         if (listener_) {
@@ -101,6 +100,15 @@ bool MatchingEngine::process_order(const OrderRequest& request) {
             .timestamp = request.timestamp,
         });
     }
+
+    return execute_matching_and_rest(request, true);
+}
+
+bool MatchingEngine::execute_matching_and_rest(const OrderRequest& request,
+                                               bool emit_rested_event) {
+    const bool is_market = (request.type == OrderType::Market);
+    const bool is_fok = (request.type == OrderType::FOK || request.tif == TimeInForce::FOK);
+    const bool is_ioc = (request.type == OrderType::IOC || request.tif == TimeInForce::IOC);
 
     Volume remaining_qty = request.volume;
 
@@ -227,7 +235,7 @@ bool MatchingEngine::process_order(const OrderRequest& request) {
                 }
                 return false;
             }
-            if (listener_) {
+            if (listener_ && emit_rested_event) {
                 listener_->on_order_rested(OrderRested{
                     .order_id = request.id,
                     .price = request.price,
@@ -341,7 +349,7 @@ bool MatchingEngine::process_amend(const AmendOrderRequest& request) {
         return ok;
     }
 
-    // Price changed: atomic cancel and re-submission at new price
+    // Price changed: atomic cancel and replacement at new price without duplicate AddOrder event
     book_.cancel_order(request.id);
 
     if (listener_) {
@@ -356,15 +364,17 @@ bool MatchingEngine::process_amend(const AmendOrderRequest& request) {
         });
     }
 
-    return process_order(OrderRequest{
-        .id = request.id,
-        .side = side,
-        .type = OrderType::Limit,
-        .price = request.new_price,
-        .volume = request.new_volume,
-        .timestamp = request.timestamp,
-        .tif = tif,
-    });
+    return execute_matching_and_rest(
+        OrderRequest{
+            .id = request.id,
+            .side = side,
+            .type = OrderType::Limit,
+            .price = request.new_price,
+            .volume = request.new_volume,
+            .timestamp = request.timestamp,
+            .tif = tif,
+        },
+        false);
 }
 
 }  // namespace orderbook

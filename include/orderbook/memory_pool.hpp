@@ -113,6 +113,27 @@ public:
         return ptr >= storage_ && ptr < (storage_ + capacity_);
     }
 
+    // Returns 32-bit pool index for O(1) compact pointer compression
+    [[nodiscard]] uint32_t index_of(const T* ptr) const noexcept {
+        assert(contains(ptr));
+        return static_cast<uint32_t>(ptr - storage_);
+    }
+
+    // Resolves 32-bit pool index back to object pointer in O(1)
+    [[nodiscard]] T* at(uint32_t idx) noexcept {
+        if (idx >= capacity_) [[unlikely]] {
+            return nullptr;
+        }
+        return storage_ + idx;
+    }
+
+    [[nodiscard]] const T* at(uint32_t idx) const noexcept {
+        if (idx >= capacity_) [[unlikely]] {
+            return nullptr;
+        }
+        return storage_ + idx;
+    }
+
     [[nodiscard]] size_t capacity() const noexcept { return capacity_; }
 
     [[nodiscard]] size_t available_count() const noexcept { return free_top_; }

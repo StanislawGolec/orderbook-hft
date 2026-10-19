@@ -268,3 +268,68 @@ TEST_CASE("SymbolRouter - Zero Dynamic Heap Allocations on Routing Hot Path", "[
 
     SUCCEED("Dispatched 200 operations across SymbolRouter with 0 dynamic heap allocations");
 }
+
+TEST_CASE("SymbolRouter - Multi-Producer Same-Symbol MPSC and Concurrent BBO Queries",
+          "[symbol_router]") {
+    SymbolRouter router;
+    auto sym_aapl = SymbolId::from_string("AAPL");
+
+    OrderBook book_aapl(50000, 1000);
+    MatchingEngine engine_aapl(book_aapl);
+    EngineService service_aapl(engine_aapl, 32768);
+    REQUIRE(router.register_symbol(sym_aapl, &service_aapl));
+
+    router.start_all();
+
+    constexpr size_t NUM_PRODUCERS = 4;
+    constexpr size_t ORDERS_PER_THREAD = 2500;
+    std::atomic<bool> start_signal{false};
+    std::atomic<bool> producers_done{false};
+
+    std::vector<std::thread> producers;
+    for (size_t t = 0; t < NUM_PRODUCERS; ++t) {
+        producers.emplace_back([&, t]() {
+            while (!start_signal.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            Price base_p = Price::from_double(150.0);
+            uint64_t base_id = (t + 1) * 100000;
+            for (uint64_t i = 0; i < ORDERS_PER_THREAD; ++i) {
+                Side s = (i % 2 == 0) ? Side::Buy : Side::Sell;
+                Price offset = Price::from_raw(static_cast<int64_t>((i % 20) + 1) * 100);
+                Price p = (s == Side::Buy) ? (base_p - offset) : (base_p + offset);
+                while (!router.submit_order_mpsc(sym_aapl, base_id + i, s, p, 10, i)) {
+                    std::this_thread::yield();
+                }
+            }
+        });
+    }
+
+    // Concurrent BBO reader thread polling lock-free atomic BBO while levels are mutated
+    std::atomic<uint64_t> bbo_reads{0};
+    std::thread bbo_reader([&]() {
+        while (!start_signal.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        while (!producers_done.load(std::memory_order_relaxed)) {
+            auto bbo = router.get_bbo(sym_aapl);
+            if (bbo.has_value()) {
+                bbo_reads.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    });
+
+    start_signal.store(true, std::memory_order_release);
+
+    for (auto& p : producers) {
+        p.join();
+    }
+    producers_done.store(true, std::memory_order_release);
+    bbo_reader.join();
+
+    router.stop_all();
+    router.join_all();
+
+    CHECK(service_aapl.processed_commands() == NUM_PRODUCERS * ORDERS_PER_THREAD);
+    CHECK(book_aapl.order_count() == NUM_PRODUCERS * ORDERS_PER_THREAD);
+}

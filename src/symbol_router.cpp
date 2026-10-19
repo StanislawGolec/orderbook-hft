@@ -39,6 +39,14 @@ bool SymbolRouter::submit_order(SymbolId symbol, const OrderRequest& request) {
     return service->submit_order(request);
 }
 
+bool SymbolRouter::submit_order_mpsc(SymbolId symbol, const OrderRequest& request) {
+    EngineService* service = get_service(symbol);
+    if (!service) [[unlikely]] {
+        return false;
+    }
+    return service->submit_order_mpsc(request);
+}
+
 bool SymbolRouter::cancel_order(SymbolId symbol, OrderId id, Timestamp ts) {
     EngineService* service = get_service(symbol);
     if (!service) [[unlikely]] {
@@ -84,10 +92,10 @@ std::optional<ConsolidatedBBO> SymbolRouter::get_bbo(SymbolId symbol) const noex
     const OrderBook& book = service->engine().book();
     return ConsolidatedBBO{
         .symbol = symbol,
-        .best_bid = book.best_bid(),
-        .best_bid_volume = book.best_bid_volume(),
-        .best_ask = book.best_ask(),
-        .best_ask_volume = book.best_ask_volume(),
+        .best_bid = book.bids().best_price_atomic(),
+        .best_bid_volume = book.bids().best_volume_atomic(),
+        .best_ask = book.asks().best_price_atomic(),
+        .best_ask_volume = book.asks().best_volume_atomic(),
     };
 }
 
@@ -98,10 +106,10 @@ std::vector<ConsolidatedBBO> SymbolRouter::get_all_bbo() const {
         const OrderBook& book = entries_[i].service->engine().book();
         result.push_back(ConsolidatedBBO{
             .symbol = entries_[i].symbol,
-            .best_bid = book.best_bid(),
-            .best_bid_volume = book.best_bid_volume(),
-            .best_ask = book.best_ask(),
-            .best_ask_volume = book.best_ask_volume(),
+            .best_bid = book.bids().best_price_atomic(),
+            .best_bid_volume = book.bids().best_volume_atomic(),
+            .best_ask = book.asks().best_price_atomic(),
+            .best_ask_volume = book.asks().best_volume_atomic(),
         });
     }
     return result;

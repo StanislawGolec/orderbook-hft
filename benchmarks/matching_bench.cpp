@@ -8,6 +8,7 @@
 
 #include "orderbook/alloc_guard.hpp"
 #include "orderbook/cpu_pause.hpp"
+#include "orderbook/latency_profiler.hpp"
 #include "orderbook/matching_engine.hpp"
 #include "orderbook/order_book.hpp"
 #include "orderbook/spsc_queue.hpp"
@@ -30,7 +31,6 @@ double calculate_percentile(const std::vector<double>& v, double p) {
 static void BM_InsertLimitOrder_Resting(benchmark::State& state) {
     const size_t batch_size = 50000;
     OrderBook book(batch_size * 2, 2000);
-    book.preallocate(batch_size * 2, 2000);
 
     uint64_t order_id = 1;
     Price base_price = Price::from_double(100.0);
@@ -38,7 +38,6 @@ static void BM_InsertLimitOrder_Resting(benchmark::State& state) {
     for (auto _ : state) {
         state.PauseTiming();
         book.clear();
-        book.preallocate(batch_size * 2, 2000);
         order_id = 1;
         state.ResumeTiming();
 
@@ -51,20 +50,35 @@ static void BM_InsertLimitOrder_Resting(benchmark::State& state) {
             }
         }
     }
+
+    // Per-operation latency distribution pass via hardware RDTSC
+    LatencyProfiler profiler;
+    book.clear();
+    order_id = 1;
+    for (size_t i = 0; i < batch_size; ++i) {
+        Price price = base_price + Price::from_raw(static_cast<int64_t>(i % 500));
+        uint64_t t0 = rdtsc_probe();
+        Order* order = book.add_limit_order(order_id++, Side::Buy, price, 100, 1000 + i);
+        uint64_t t1 = rdtsc_probe();
+        benchmark::DoNotOptimize(order);
+        profiler.record_cycles(t1 - t0);
+    }
+
     state.SetItemsProcessed(state.iterations() * batch_size);
     state.counters["allocs/op"] = 0;
+    state.counters["p50_ns"] = profiler.p50();
+    state.counters["p99_ns"] = profiler.p99();
+    state.counters["p99.9_ns"] = profiler.p99_9();
 }
 
-// 2. Direct Order Cancellation via Fast Flat Index Lookup
+// 2. Direct Order Cancellation via Fast Flat Index & O(1) level_pool_idx
 static void BM_CancelOrder_Direct(benchmark::State& state) {
     const size_t batch_size = 50000;
     OrderBook book(batch_size * 2, 2000);
-    book.preallocate(batch_size * 2, 2000);
 
     for (auto _ : state) {
         state.PauseTiming();
         book.clear();
-        book.preallocate(batch_size * 2, 2000);
         for (uint64_t i = 1; i <= batch_size; ++i) {
             Price price =
                 Price::from_double(100.0) + Price::from_raw(static_cast<int64_t>(i % 500));
@@ -80,8 +94,26 @@ static void BM_CancelOrder_Direct(benchmark::State& state) {
             }
         }
     }
+
+    LatencyProfiler profiler;
+    book.clear();
+    for (uint64_t i = 1; i <= batch_size; ++i) {
+        Price price = Price::from_double(100.0) + Price::from_raw(static_cast<int64_t>(i % 500));
+        book.add_limit_order(i, Side::Buy, price, 100, 1000 + i);
+    }
+    for (uint64_t i = 1; i <= batch_size; ++i) {
+        uint64_t t0 = rdtsc_probe();
+        bool cancelled = book.cancel_order(i);
+        uint64_t t1 = rdtsc_probe();
+        benchmark::DoNotOptimize(cancelled);
+        profiler.record_cycles(t1 - t0);
+    }
+
     state.SetItemsProcessed(state.iterations() * batch_size);
     state.counters["allocs/op"] = 0;
+    state.counters["p50_ns"] = profiler.p50();
+    state.counters["p99_ns"] = profiler.p99();
+    state.counters["p99.9_ns"] = profiler.p99_9();
 }
 
 // 3. Limit Order Crossing & Full Fill Execution
@@ -93,7 +125,6 @@ static void BM_MatchOrder_FullFill(benchmark::State& state) {
     for (auto _ : state) {
         state.PauseTiming();
         book.clear();
-        book.preallocate(batch_size * 3, 2000);
         for (uint64_t i = 1; i <= batch_size; ++i) {
             Price price = Price::from_double(100.0);
             book.add_limit_order(i, Side::Sell, price, 100, 1000 + i);
@@ -109,8 +140,26 @@ static void BM_MatchOrder_FullFill(benchmark::State& state) {
             }
         }
     }
+
+    LatencyProfiler profiler;
+    book.clear();
+    for (uint64_t i = 1; i <= batch_size; ++i) {
+        book.add_limit_order(i, Side::Sell, Price::from_double(100.0), 100, 1000 + i);
+    }
+    for (uint64_t i = 1; i <= batch_size; ++i) {
+        uint64_t t0 = rdtsc_probe();
+        bool matched =
+            engine.submit_order(batch_size + i, Side::Buy, Price::from_double(100.0), 100, 2000 + i);
+        uint64_t t1 = rdtsc_probe();
+        benchmark::DoNotOptimize(matched);
+        profiler.record_cycles(t1 - t0);
+    }
+
     state.SetItemsProcessed(state.iterations() * batch_size);
     state.counters["allocs/op"] = 0;
+    state.counters["p50_ns"] = profiler.p50();
+    state.counters["p99_ns"] = profiler.p99();
+    state.counters["p99.9_ns"] = profiler.p99_9();
 }
 
 // 4. Market Order Multi-Level Liquidity Sweep
@@ -124,7 +173,6 @@ static void BM_MarketOrder_SweepLevels(benchmark::State& state) {
         for (size_t cycle = 0; cycle < sweep_cycles; ++cycle) {
             state.PauseTiming();
             book.clear();
-            book.preallocate(levels_count * 20, levels_count * 2);
             for (uint64_t l = 0; l < levels_count; ++l) {
                 Price p = Price::from_double(100.0 + static_cast<double>(l));
                 book.add_limit_order(l + 1, Side::Sell, p, 50, 1000 + l);
@@ -182,13 +230,11 @@ static void BM_SPSC_Throughput(benchmark::State& state) {
 static void BM_AmendOrder_InPlace(benchmark::State& state) {
     const size_t batch_size = 50000;
     OrderBook book(batch_size * 2, 2000);
-    book.preallocate(batch_size * 2, 2000);
     MatchingEngine engine(book);
 
     for (auto _ : state) {
         state.PauseTiming();
         book.clear();
-        book.preallocate(batch_size * 2, 2000);
         for (uint64_t i = 1; i <= batch_size; ++i) {
             Price price =
                 Price::from_double(100.0) + Price::from_raw(static_cast<int64_t>(i % 500));
@@ -206,8 +252,27 @@ static void BM_AmendOrder_InPlace(benchmark::State& state) {
             }
         }
     }
+
+    LatencyProfiler profiler;
+    book.clear();
+    for (uint64_t i = 1; i <= batch_size; ++i) {
+        Price price = Price::from_double(100.0) + Price::from_raw(static_cast<int64_t>(i % 500));
+        book.add_limit_order(i, Side::Buy, price, 100, 1000 + i);
+    }
+    for (uint64_t i = 1; i <= batch_size; ++i) {
+        Price price = Price::from_double(100.0) + Price::from_raw(static_cast<int64_t>(i % 500));
+        uint64_t t0 = rdtsc_probe();
+        bool amended = engine.amend_order(i, price, 50, 2000 + i);
+        uint64_t t1 = rdtsc_probe();
+        benchmark::DoNotOptimize(amended);
+        profiler.record_cycles(t1 - t0);
+    }
+
     state.SetItemsProcessed(state.iterations() * batch_size);
     state.counters["allocs/op"] = 0;
+    state.counters["p50_ns"] = profiler.p50();
+    state.counters["p99_ns"] = profiler.p99();
+    state.counters["p99.9_ns"] = profiler.p99_9();
 }
 
 }  // namespace

@@ -57,6 +57,21 @@ public:
                                                  .tif = tif});
     }
 
+    // Multi-Producer (MPSC) thread-safe order submission for concurrent clients targeting same symbol
+    bool submit_order_mpsc(SymbolId symbol, const OrderRequest& request);
+
+    bool submit_order_mpsc(SymbolId symbol, OrderId id, Side side, Price price, Volume volume,
+                           Timestamp ts, OrderType type = OrderType::Limit,
+                           TimeInForce tif = TimeInForce::GTC) {
+        return submit_order_mpsc(symbol, OrderRequest{.id = id,
+                                                      .side = side,
+                                                      .type = type,
+                                                      .price = price,
+                                                      .volume = volume,
+                                                      .timestamp = ts,
+                                                      .tif = tif});
+    }
+
     // Fast order cancellation routed to target symbol
     bool cancel_order(SymbolId symbol, OrderId id, Timestamp ts = 0);
 

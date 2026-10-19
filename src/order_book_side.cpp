@@ -10,7 +10,7 @@ OrderBookSide::OrderBookSide(Side side, ObjectPool<PriceLevel>& level_pool, size
 }
 
 PriceLevel* OrderBookSide::find_level(Price price) const noexcept {
-    if (best_level_ && best_level_->price() == price) {
+    if (best_level_ && best_level_->price() == price) [[likely]] {
         return best_level_;
     }
 
@@ -28,24 +28,35 @@ PriceLevel* OrderBookSide::find_level(Price price) const noexcept {
 PriceLevel* OrderBookSide::add_order(Order* order) {
     assert(order != nullptr);
 
+    if (best_level_ && best_level_->price() == order->price) [[likely]] {
+        best_level_->add_order(order);
+        order->level_pool_idx = level_pool_.index_of(best_level_);
+        total_volume_ += order->remaining_volume;
+        atomic_best_volume_.store(best_level_->total_volume(), std::memory_order_relaxed);
+        return best_level_;
+    }
+
     auto it = std::lower_bound(levels_.begin(), levels_.end(), order->price,
                                [this](const PriceLevel* level, Price target_price) {
                                    return is_better_price(level->price(), target_price);
                                });
 
     PriceLevel* target_level = nullptr;
-    if (it != levels_.end() && (*it)->price() == order->price) {
+    if (it != levels_.end() && (*it)->price() == order->price) [[likely]] {
         target_level = *it;
         target_level->add_order(order);
+        order->level_pool_idx = level_pool_.index_of(target_level);
     } else {
         target_level = level_pool_.construct(order->price);
         assert(target_level != nullptr);
         target_level->add_order(order);
+        order->level_pool_idx = level_pool_.index_of(target_level);
         levels_.insert(it, target_level);
     }
 
     best_level_ = levels_.empty() ? nullptr : levels_[0];
     total_volume_ += order->remaining_volume;
+    sync_bbo_atomic();
     return target_level;
 }
 
@@ -54,30 +65,48 @@ bool OrderBookSide::remove_order(Order* order) {
         return false;
     }
 
-    auto it = levels_.end();
-    if (best_level_ && best_level_->price() == order->price) {
-        it = levels_.begin();
-    } else {
-        it = std::lower_bound(levels_.begin(), levels_.end(), order->price,
-                              [this](const PriceLevel* level, Price target_price) {
-                                  return is_better_price(level->price(), target_price);
-                              });
+    PriceLevel* level = nullptr;
+    if (order->level_pool_idx != INVALID_LEVEL_IDX) [[likely]] {
+        level = level_pool_.at(order->level_pool_idx);
+        if (level && (level->empty() || level->price() != order->price)) [[unlikely]] {
+            level = nullptr;
+        }
     }
-
-    if (it == levels_.end() || (*it)->price() != order->price) {
+    if (!level) [[unlikely]] {
+        level = find_level(order->price);
+    }
+    if (!level) {
         return false;
     }
 
-    PriceLevel* level = *it;
     total_volume_ -= order->remaining_volume;
     level->remove_order(order);
+    order->level_pool_idx = INVALID_LEVEL_IDX;
 
-    if (level->empty()) {
-        levels_.erase(it);
-        level_pool_.destroy(level);
+    // Fast O(1) path: price level still has remaining orders (no vector search or shift!)
+    if (!level->empty()) [[likely]] {
+        if (level == best_level_) {
+            atomic_best_volume_.store(best_level_->total_volume(), std::memory_order_relaxed);
+        }
+        return true;
     }
 
+    // Price level became empty: remove from sorted vector and return to pool
+    if (level == best_level_) {
+        levels_.erase(levels_.begin());
+    } else {
+        auto it = std::lower_bound(levels_.begin(), levels_.end(), order->price,
+                                   [this](const PriceLevel* lvl, Price target_price) {
+                                       return is_better_price(lvl->price(), target_price);
+                                   });
+        if (it != levels_.end() && *it == level) {
+            levels_.erase(it);
+        }
+    }
+    level_pool_.destroy(level);
+
     best_level_ = levels_.empty() ? nullptr : levels_[0];
+    sync_bbo_atomic();
     return true;
 }
 
@@ -86,10 +115,15 @@ void OrderBookSide::reduce_order_volume(Order* order, Volume filled_qty) {
         return;
     }
 
-    PriceLevel* level = find_level(order->price);
-    if (level) {
+    PriceLevel* level = (order->level_pool_idx != INVALID_LEVEL_IDX)
+                            ? level_pool_.at(order->level_pool_idx)
+                            : find_level(order->price);
+    if (level) [[likely]] {
         level->reduce_volume(filled_qty);
         total_volume_ -= filled_qty;
+        if (level == best_level_) {
+            atomic_best_volume_.store(best_level_->total_volume(), std::memory_order_relaxed);
+        }
     }
     order->fill(filled_qty);
 }
@@ -99,8 +133,10 @@ bool OrderBookSide::modify_order_volume(Order* order, Volume new_volume) {
         return false;
     }
 
-    PriceLevel* level = find_level(order->price);
-    if (!level) {
+    PriceLevel* level = (order->level_pool_idx != INVALID_LEVEL_IDX)
+                            ? level_pool_.at(order->level_pool_idx)
+                            : find_level(order->price);
+    if (!level || level->empty() || level->price() != order->price) [[unlikely]] {
         return false;
     }
 
@@ -109,6 +145,9 @@ bool OrderBookSide::modify_order_volume(Order* order, Volume new_volume) {
         level->reduce_volume(diff);
         total_volume_ -= diff;
         order->remaining_volume = new_volume;
+        if (order->initial_volume >= diff) {
+            order->initial_volume -= diff;
+        }
     } else if (new_volume > order->remaining_volume) {
         Volume diff = new_volume - order->remaining_volume;
         level->increase_volume(diff);
@@ -116,6 +155,10 @@ bool OrderBookSide::modify_order_volume(Order* order, Volume new_volume) {
         order->remaining_volume = new_volume;
         order->initial_volume += diff;
         level->move_to_tail(order);
+    }
+
+    if (level == best_level_) {
+        atomic_best_volume_.store(best_level_->total_volume(), std::memory_order_relaxed);
     }
     return true;
 }
@@ -155,6 +198,7 @@ void OrderBookSide::clear() noexcept {
     levels_.clear();
     best_level_ = nullptr;
     total_volume_ = 0;
+    sync_bbo_atomic();
 }
 
 }  // namespace orderbook

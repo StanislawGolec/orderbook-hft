@@ -114,3 +114,29 @@ TEST_CASE("OrderBook - Zero Heap Allocation Hot Path Proof", "[order_book]") {
     // Verify order count after guarded execution
     REQUIRE(book.order_count() == 200);
 }
+
+TEST_CASE("OrderBook - O(1) level_pool_idx Resolution and filled_volume Invariant", "[order_book]") {
+    OrderBook book(100, 20);
+    Price p = Price::from_double(100.0);
+
+    Order* o = book.add_limit_order(1, Side::Buy, p, 100, 1000);
+    REQUIRE(o != nullptr);
+    REQUIRE(sizeof(Order) == 64);
+    REQUIRE(o->level_pool_idx != INVALID_LEVEL_IDX);
+    REQUIRE(o->filled_volume() == 0);
+
+    // Partial fill of 30 units: remaining = 70, filled = 30
+    book.reduce_order_volume(o, 30);
+    CHECK(o->remaining_volume == 70);
+    CHECK(o->filled_volume() == 30);
+
+    // Amend volume down from 70 to 50: filled_volume must remain 30 (not 50!)
+    REQUIRE(book.modify_order_volume(o, 50));
+    CHECK(o->remaining_volume == 50);
+    CHECK(o->filled_volume() == 30);
+
+    // Amend volume up from 50 to 90: filled_volume must still remain 30
+    REQUIRE(book.modify_order_volume(o, 90));
+    CHECK(o->remaining_volume == 90);
+    CHECK(o->filled_volume() == 30);
+}

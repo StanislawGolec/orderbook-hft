@@ -299,6 +299,9 @@ TEST_CASE("Order Amend - MarketDataPublisher and FeedHandler OrderReplaceMsg", "
     Price p_new = Price::from_double(100.50);
     REQUIRE(engine.amend_order(101, p_new, 35, 1001));
 
+    // Must NOT emit a duplicate AddOrderMsg on price amendment
+    CHECK(sink.add_msgs.size() == 1);
+
     // Verify MarketDataPublisher generated OrderReplaceMsg
     REQUIRE(sink.replace_msgs.size() == 1);
     const auto& replace_msg = sink.replace_msgs[0];

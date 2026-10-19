@@ -83,3 +83,31 @@ TEST_CASE("FlatOrderIndex - Large Volume Churn", "[order_index]") {
         REQUIRE(index.find(orders[i].id) == &orders[i]);
     }
 }
+
+TEST_CASE("FlatOrderIndex - Backward-Shift Deletion High-Churn Stress (Zero Tombstones)",
+          "[order_index]") {
+    REQUIRE(sizeof(FlatOrderIndex::Entry) == 16);
+
+    // Small capacity (allocates 32 buckets); churn 10,000 unique IDs (>300x capacity)
+    FlatOrderIndex index(16);
+    std::vector<Order> orders(10000);
+
+    for (size_t i = 0; i < 10000; ++i) {
+        orders[i].id = i + 1;
+        REQUIRE(index.insert(orders[i].id, &orders[i]));
+
+        // Keep up to 12 active orders at a time while continuously erasing older ones
+        if (i >= 12) {
+            OrderId old_id = orders[i - 12].id;
+            REQUIRE(index.erase(old_id));
+            REQUIRE(index.find(old_id) == nullptr);
+        }
+
+        // Verify all active orders in the sliding window remain reachable
+        size_t window_start = (i >= 12) ? (i - 11) : 0;
+        for (size_t j = window_start; j <= i; ++j) {
+            REQUIRE(index.find(orders[j].id) == &orders[j]);
+        }
+    }
+    REQUIRE(index.size() == 12);
+}

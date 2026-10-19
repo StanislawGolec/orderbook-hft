@@ -150,3 +150,28 @@ TEST_CASE("IntrusiveList - Move Semantics", "[intrusive_list]") {
     REQUIRE(list3.size() == 2);
     REQUIRE(list3.front() == &o1);
 }
+
+TEST_CASE("IntrusiveList - Idempotent Double-Erase and Unlinked Node Safety", "[intrusive_list]") {
+    Order o1{.id = 1};
+    Order o2{.id = 2};
+    Order unlinked{.id = 99};
+
+    IntrusiveList<Order> list;
+    list.push_back(&o1);
+    list.push_back(&o2);
+    REQUIRE(list.size() == 2);
+
+    // Erasing an unlinked node must be a safe no-op
+    list.erase(&unlinked);
+    REQUIRE(list.size() == 2);
+    REQUIRE(list.front() == &o1);
+    REQUIRE(list.back() == &o2);
+
+    // Erasing o2 twice must not corrupt head_ or underflow size_
+    list.erase(&o2);
+    REQUIRE(list.size() == 1);
+    list.erase(&o2);
+    REQUIRE(list.size() == 1);
+    REQUIRE(list.front() == &o1);
+    REQUIRE(list.back() == &o1);
+}

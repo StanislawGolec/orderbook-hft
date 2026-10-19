@@ -88,7 +88,7 @@ public:
 
     // Erases a node by direct pointer without list traversal in O(1)
     void erase(T* node) noexcept {
-        if (!node) {
+        if (!node || (!node->prev && node != head_)) {
             return;
         }
         if (node->prev) {

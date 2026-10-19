@@ -146,8 +146,11 @@ TEST_CASE("FeedHandler - Chaos Resilience and Sequence Gap Recovery", "[market_d
     REQUIRE(handler.expected_sequence_number() == 6);
     REQUIRE(!handler.has_detected_gaps());
     REQUIRE(handler.is_in_sync());
+    // 5 orders of 10 volume at $100.0 must accumulate to 50 BBO volume
+    REQUIRE(handler.current_bbo().bid_price == Price::from_double(100.0));
+    REQUIRE(handler.current_bbo().bid_volume == 50);
 
-    // 2. CHAOS FAULT INJECTION: Network drops packets 6 through 15
+    // 2. CHAOS FAULT INJECTION: Network drops packets 6 through 15 (under AllocationGuard!)
     // Packet 16 arrives directly!
     AddOrderMsg msg16{
         .msg_type = MarketDataMsgType::AddOrder,
@@ -158,7 +161,10 @@ TEST_CASE("FeedHandler - Chaos Resilience and Sequence Gap Recovery", "[market_d
         .volume = 20,
         .timestamp = 2000,
     };
-    handler.on_add_order(msg16);
+    {
+        AllocationGuard guard;
+        REQUIRE(handler.on_add_order(msg16));
+    }
 
     // Verify Gap Detection
     REQUIRE(handler.has_detected_gaps());
@@ -169,10 +175,15 @@ TEST_CASE("FeedHandler - Chaos Resilience and Sequence Gap Recovery", "[market_d
     REQUIRE(handler.detected_gaps()[0].received_seq == 16);
     REQUIRE(handler.detected_gaps()[0].missing_count == 10);
     REQUIRE(handler.expected_sequence_number() == 17);
+    REQUIRE(handler.messages_processed() == 6);
+    REQUIRE(handler.current_bbo().bid_volume == 20);
 
     // 3. CHAOS FAULT INJECTION: Duplicate delivery of packet 16 arrives late
-    handler.on_add_order(msg16);
+    // Must return false and must NOT increment messages_processed_ or mutate BBO volume
+    REQUIRE_FALSE(handler.on_add_order(msg16));
     REQUIRE(handler.duplicate_count() == 1);
+    REQUIRE(handler.messages_processed() == 6);
+    REQUIRE(handler.current_bbo().bid_volume == 20);
 
     // 4. RESYNCHRONIZATION RECOVERY: Apply authoritative L2 snapshot at sequence 25
     DepthSnapshotMsg recovery_snapshot{
