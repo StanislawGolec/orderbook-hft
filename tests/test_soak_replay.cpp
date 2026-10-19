@@ -131,12 +131,13 @@ TEST_CASE("MarketReplaySimulator - Hot Path Zero Dynamic Memory Allocations", "[
 
     MarketReplaySimulator simulator(config);
 
+    ReplayStats stats;
     {
         AllocationGuard guard;
-        ReplayStats stats = simulator.run(book, engine);
-        CHECK(stats.total_operations == NUM_OPS);
-        CHECK(stats.trades > 0);
+        stats = simulator.run(book, engine);
     }
+    CHECK(stats.total_operations == NUM_OPS);
+    CHECK(stats.trades > 0);
 
     CHECK(InvariantChecker::check_no_crossed_book(book));
     auto report = InvariantChecker::check_book_consistency(book);

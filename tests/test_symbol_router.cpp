@@ -246,25 +246,35 @@ TEST_CASE("SymbolRouter - Zero Dynamic Heap Allocations on Routing Hot Path", "[
 
     Price p = Price::from_double(150.0);
 
+    bool all_submitted = true;
+    bool all_amended = true;
+    bool all_cancelled = true;
     {
         AllocationGuard guard;
 
         for (uint64_t id = 1; id <= 100; ++id) {
             // Hot-path order routing: MUST NOT ALLOCATE
-            bool submitted = router.submit_order(sym_aapl, id, Side::Buy, p, 50, id);
-            CHECK(submitted);
+            if (!router.submit_order(sym_aapl, id, Side::Buy, p, 50, id)) {
+                all_submitted = false;
+            }
         }
 
         for (uint64_t id = 1; id <= 50; ++id) {
-            bool amended = router.amend_order(sym_aapl, id, p, 25, id + 100);
-            CHECK(amended);
+            if (!router.amend_order(sym_aapl, id, p, 25, id + 100)) {
+                all_amended = false;
+            }
         }
 
         for (uint64_t id = 51; id <= 100; ++id) {
-            bool cancelled = router.cancel_order(sym_aapl, id, id + 200);
-            CHECK(cancelled);
+            if (!router.cancel_order(sym_aapl, id, id + 200)) {
+                all_cancelled = false;
+            }
         }
     }
+
+    CHECK(all_submitted);
+    CHECK(all_amended);
+    CHECK(all_cancelled);
 
     SUCCEED("Dispatched 200 operations across SymbolRouter with 0 dynamic heap allocations");
 }

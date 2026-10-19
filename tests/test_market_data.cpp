@@ -161,10 +161,12 @@ TEST_CASE("FeedHandler - Chaos Resilience and Sequence Gap Recovery", "[market_d
         .volume = 20,
         .timestamp = 2000,
     };
+    bool added = false;
     {
         AllocationGuard guard;
-        REQUIRE(handler.on_add_order(msg16));
+        added = handler.on_add_order(msg16);
     }
+    REQUIRE(added);
 
     // Verify Gap Detection
     REQUIRE(handler.has_detected_gaps());

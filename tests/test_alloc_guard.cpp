@@ -12,11 +12,15 @@ TEST_CASE("AllocationGuard - State Management", "[alloc_guard]") {
     REQUIRE_FALSE(AllocationGuard::is_active());
     REQUIRE_FALSE(g_disallow_allocations);
 
+    bool active_inside = false;
+    bool flag_inside = false;
     {
         AllocationGuard guard;
-        REQUIRE(AllocationGuard::is_active());
-        REQUIRE(g_disallow_allocations);
+        active_inside = AllocationGuard::is_active();
+        flag_inside = g_disallow_allocations;
     }
+    REQUIRE(active_inside);
+    REQUIRE(flag_inside);
 
     REQUIRE_FALSE(AllocationGuard::is_active());
     REQUIRE_FALSE(g_disallow_allocations);
@@ -31,15 +35,17 @@ TEST_CASE("AllocationGuard - Throws BadAlloc On Heap Allocation", "[alloc_guard]
     delete normal_ptr;
 
     // Inside guard, dynamic allocation throws std::bad_alloc
+    bool caught_bad_alloc = false;
     {
         AllocationGuard guard;
-        REQUIRE_THROWS_AS(
-            []() {
-                volatile int* p = new int(100);
-                delete p;
-            }(),
-            std::bad_alloc);
+        try {
+            volatile int* p = new int(100);
+            delete p;
+        } catch (const std::bad_alloc&) {
+            caught_bad_alloc = true;
+        }
     }
+    REQUIRE(caught_bad_alloc);
 }
 
 TEST_CASE("AllocationGuard - Zero Allocation Hot Path Proof", "[alloc_guard]") {
