@@ -1,0 +1,46 @@
+name: Deploy to Oracle Cloud (OCI)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'src/**'
+      - 'benchmarks/**'
+      - 'tools/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/deploy-oci.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-oci:
+    name: Continuous Deployment to OCI Bare-Metal
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and Rebuild on Oracle Cloud VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USER }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          script: |
+            set -e
+            echo "=== Pulling latest changes from main ==="
+            cd /opt/orderbook-hft
+            git pull origin main
+
+            echo "=== Rebuilding binaries with native optimizations ==="
+            cmake -B build -S . -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DORDERBOOK_BUILD_BENCHMARKS=ON \
+              -DORDERBOOK_BUILD_TESTS=ON
+
+            cmake --build build --target market_replay matching_bench orderbook_tests -j1
+
+            echo "=== Updating deployed binaries ==="
+            sudo cp build/market_replay /opt/orderbook-hft/market_replay
+            sudo cp build/benchmarks/matching_bench /opt/orderbook-hft/matching_bench
+
+            echo "=== Restarting OrderBook Telemetry Service ==="
+            sudo systemctl restart orderbook-telemetry.service
+            sudo systemctl is-active --quiet orderbook-telemetry.service && echo "OrderBook Telemetry Service is ACTIVE and STREAMING."
