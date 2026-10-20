@@ -11,8 +11,8 @@ Restart=always
 RestartSec=5s
 
 # Low-Latency Systems Tuning:
-# 1. Pin process to isolated physical CPU cores 2 and 3
-CPUAffinity=2 3
+# 1. Pin process to CPU core 0 (adapted for single OCPU / Always-Free instance)
+CPUAffinity=0
 
 # 2. Maximum priority scheduling
 Nice=-20
