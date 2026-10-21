@@ -238,3 +238,9 @@ ctest --test-dir build-asan --output-on-failure
 ## License
 
 MIT License. See [LICENSE](LICENSE) for full details.
+
+---
+
+## Development
+
+Developed with the assistance of agentic AI workflows and LLMs.
